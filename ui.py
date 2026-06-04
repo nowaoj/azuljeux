@@ -339,7 +339,7 @@ class AzulUI:
         pygame.draw.rect(self.screen, (90, 93, 100), board_rect, 2, border_radius=self.s(10))
 
         score = player.get("score", 0)
-        label_text = f"Joueur {'1' if is_me else '2'} (Vous)" if is_me else f"Joueur {'2' if is_my_turn else '1'}"
+        label_text = "costa (Vous)" if is_me and self.my_player == 0 else "souquette (Vous)" if is_me else "souquette" if self.my_player == 0 else "costa"
         lbl = self.font_med.render(label_text, True, TEXT_COLOR)
         self.screen.blit(lbl, (px + self.s(15), y_pos + self.s(8)))
 
@@ -452,8 +452,8 @@ class AzulUI:
         res = self.font_large.render(result, True, result_color)
         self.screen.blit(res, (cx - res.get_width() // 2, cy - self.s(35)))
 
-        s0 = self.font_med.render(f"Joueur 1: {p0_score} points", True, TEXT_COLOR)
-        s1 = self.font_med.render(f"Joueur 2: {p1_score} points", True, TEXT_COLOR)
+        s0 = self.font_med.render(f"costa: {p0_score} points", True, TEXT_COLOR)
+        s1 = self.font_med.render(f"souquette: {p1_score} points", True, TEXT_COLOR)
         self.screen.blit(s0, (cx - s0.get_width() // 2, cy + self.s(10)))
         self.screen.blit(s1, (cx - s1.get_width() // 2, cy + self.s(45)))
 

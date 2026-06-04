@@ -115,7 +115,7 @@ class AzulApp:
         if msg_type == "client_connected":
             self.client_connected = True
             self.ui.waiting_for_opponent = False
-            self.ui.connection_status = "Joueur 2 connect\xe9!"
+            self.ui.connection_status = "souquette connect\xe9!"
         elif msg_type == "state_update":
             self.state_snapshot = data
             self.ui.set_state(data)
