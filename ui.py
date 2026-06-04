@@ -41,7 +41,6 @@ LIGHT_COLORS = {
 }
 
 VALID_LINE_COLOR = (140, 140, 145)
-SELECTED_LINE_COLOR = (170, 170, 175)
 
 
 def draw_rounded_rect(surface, color, rect, radius=8):
@@ -73,8 +72,8 @@ class AzulUI:
         self.HEIGHT = info.current_h
         self.scale = min(self.WIDTH / REF_W, self.HEIGHT / REF_H)
 
-        self.OPP_BOARD_H = self.s(115)
-        self.MY_BOARD_H = self.s(190)
+        self.OPP_BOARD_H = self.s(130)
+        self.MY_BOARD_H = self.s(156)
 
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT), pygame.FULLSCREEN)
         pygame.display.set_caption("Azul - Jeu à 2 Joueurs")
@@ -95,8 +94,6 @@ class AzulUI:
         self.valid_lines = []
         self.message = ""
         self.message_timer = 0
-        self.selected_dest_row = None
-        self.confirm_btn_rect = None
         self.connected = False
         self.game_started = False
         self.waiting_for_opponent = not is_host
@@ -111,8 +108,6 @@ class AzulUI:
         self.selected_factory = -1
         self.selected_center = False
         self.selected_color = None
-        self.selected_dest_row = None
-        self.confirm_btn_rect = None
 
     def set_message(self, msg, duration=120):
         self.message = msg
@@ -307,27 +302,8 @@ class AzulUI:
         src_text = self.font_small.render(source_name, True, DIM_TEXT)
         self.screen.blit(src_text, (px + self.s(50), py + self.s(28)))
 
-        if self.selected_dest_row is not None:
-            dest_text = self.font_small.render(f"Ligne {self.selected_dest_row + 1}", True, TEXT_COLOR)
-            self.screen.blit(dest_text, (px + self.s(120), py + self.s(8)))
-
-            btn_w = self.s(90)
-            btn_h = self.s(28)
-            btn_x = px + pw - btn_w - self.s(10)
-            btn_y = py + (ph - btn_h) // 2
-            btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
-            draw_rounded_rect(self.screen, (70, 140, 70), btn_rect, self.s(5))
-            pygame.draw.rect(self.screen, (90, 170, 90), btn_rect, 1, border_radius=self.s(5))
-
-            btn_text = self.font_small.render("Confirmer", True, (255, 255, 255))
-            self.screen.blit(btn_text, (btn_x + (btn_w - btn_text.get_width()) // 2, btn_y + (btn_h - btn_text.get_height()) // 2))
-
-            self.confirm_btn_rect = btn_rect
-        else:
-            self.confirm_btn_rect = None
-
-        hint = self.font_small.render("Cliquez sur une ligne de motif ci-dessous", True, DIM_TEXT)
-        self.screen.blit(hint, (px, py + ph + self.s(4)))
+        hint = self.font_small.render("Choisissez une ligne de motif", True, DIM_TEXT)
+        self.screen.blit(hint, (px + self.s(120), py + self.s(8)))
 
     def _draw_player_board(self, player, y_pos, is_me, is_my_turn):
         px = self.s(40)
@@ -346,20 +322,40 @@ class AzulUI:
         sc = self.font_med.render(f"Score: {score}", True, HIGHLIGHT_COLOR)
         self.screen.blit(sc, (px + pwidth - sc.get_width() - self.s(15), y_pos + self.s(8)))
 
-        if is_me and is_my_turn and self.state.get("phase") == "factory_offer":
-            instruct = self.font_small.render(
-                "Cliquez sur un carreau, choisissez une ligne de motif, puis Confirmer",
-                True, (200, 200, 100),
-            )
-            self.screen.blit(instruct, (px + self.s(15), y_pos + board_height - self.s(18)))
-
         if is_me:
-            self._draw_pattern_lines(player, px + self.s(15), y_pos + self.s(38), self.s(22), self.s(20))
-            self._draw_wall(player, px + self.s(160), y_pos + self.s(38), self.s(26))
-            self._draw_floor_line(player, px + self.s(15), y_pos + self.s(145))
+            row_h = self.s(18)
+            pat_tile = self.s(16)
+            wall_ts = self.s(18)
+            floor_ts = self.s(20)
+            board_top = y_pos + self.s(38)
+            floor_y = board_top + 5 * row_h + self.s(8)
+            pat_x = px + self.s(15)
+            wall_x = pat_x + 5 * pat_tile + self.s(10)
+
+            self._draw_pattern_lines(player, pat_x, board_top, row_h, pat_tile)
+            self._draw_wall(player, wall_x, board_top, wall_ts, row_h)
+            self._draw_floor_line(player, pat_x, floor_y, floor_ts)
+
+            if is_my_turn and self.state.get("phase") == "factory_offer":
+                instruct = self.font_small.render(
+                    "Cliquez sur un carreau, puis une ligne de motif", True, (200, 200, 100),
+                )
+                self.screen.blit(instruct, (px + self.s(15), y_pos + board_height - self.s(18)))
         else:
-            self._draw_pattern_lines(player, px + self.s(15), y_pos + self.s(35), self.s(14), self.s(14))
-            self._draw_wall(player, px + self.s(125), y_pos + self.s(35), self.s(16))
+            row_h = self.s(15)
+            pat_tile = self.s(13)
+            wall_ts = self.s(15)
+            floor_ts = self.s(14)
+            board_top = y_pos + self.s(35)
+            floor_y = board_top + 5 * row_h + self.s(6)
+            pat_x = px + self.s(15)
+            wall_x = pat_x + 5 * pat_tile + self.s(8)
+
+            self._draw_pattern_lines(player, pat_x, board_top, row_h, pat_tile)
+            self._draw_wall(player, wall_x, board_top, wall_ts, row_h)
+            self._draw_floor_line(player, pat_x, floor_y, floor_ts)
+
+            self._draw_opponent_penalty(player, px, pwidth, y_pos)
 
     def _draw_pattern_lines(self, player, x, y, row_h, tile_sz):
         pattern_lines = player.get("pattern_lines", [])
@@ -373,43 +369,46 @@ class AzulUI:
             self.screen.blit(lbl, (line_x - label_offset, line_y))
 
             can_use = i in self.valid_lines
-            is_selected = (self.selected_dest_row == i)
             for j in range(max_size):
                 tx = line_x + j * tile_sz
                 if j < len(pattern_lines[i]):
                     draw_tile(self.screen, Color(pattern_lines[i][j]), tx, line_y, tile_sz)
                 else:
                     if can_use and j == len(pattern_lines[i]):
-                        col = SELECTED_LINE_COLOR if is_selected else VALID_LINE_COLOR
+                        col = VALID_LINE_COLOR
                     else:
                         col = (65, 67, 73)
                     draw_empty_slot(self.screen, tx, line_y, tile_sz, col)
 
-    def _draw_wall(self, player, x, y, ts):
+    def _draw_wall(self, player, x, y, ts, row_h):
         wall = player.get("wall", [])
         gap = ts + self.s(2)
         for r in range(5):
+            row_y = y + r * row_h
             for c in range(5):
                 wx = x + c * gap
-                wy = y + r * gap
+                wy = row_y + (row_h - ts) // 2
                 wall_color = WALL_LAYOUT[r][c]
                 if wall[r][c] is not None:
                     draw_tile(self.screen, Color(wall[r][c]), wx, wy, ts)
                 else:
                     rgb = WALL_COLORS_DISPLAY.get(wall_color, (60, 60, 60))
-                    rect = pygame.Rect(wx, wy, ts, ts)
+                    surf = pygame.Surface((ts, ts))
                     lighter = tuple(min(255, c2 + 30) for c2 in rgb)
-                    draw_rounded_rect(self.screen, lighter, rect, max(2, ts // 6))
-                    pygame.draw.rect(self.screen, (80, 82, 88), rect, 1, border_radius=max(2, ts // 6))
+                    rect = pygame.Rect(0, 0, ts, ts)
+                    draw_rounded_rect(surf, lighter, rect, max(2, ts // 6))
+                    pygame.draw.rect(surf, (80, 82, 88), rect, 1, border_radius=max(2, ts // 6))
+                    surf.set_alpha(140)
+                    self.screen.blit(surf, (wx, wy))
 
-    def _draw_floor_line(self, player, x, y):
+    def _draw_floor_line(self, player, x, y, ts):
         floor_line = player.get("floor_line", [])
         lbl = self.font_small.render("Plancher:", True, DIM_TEXT)
         self.screen.blit(lbl, (x, y))
 
-        ts = self.s(22)
+        slot_gap = ts + self.s(4)
         for i in range(7):
-            fx = x + self.s(75) + i * self.s(26)
+            fx = x + self.s(75) + i * slot_gap
             if i < len(floor_line):
                 tile = floor_line[i]
                 if tile == "START":
@@ -422,6 +421,13 @@ class AzulUI:
             penalty = FLOOR_PENALTIES[i] if i < len(FLOOR_PENALTIES) else 0
             pnl = self.font_small.render(str(penalty), True, PENALTY_COLORS.get(penalty, DIM_TEXT))
             self.screen.blit(pnl, (fx + self.s(6), y + ts + self.s(2)))
+
+    def _draw_opponent_penalty(self, player, px, pwidth, y_pos):
+        floor_line = player.get("floor_line", [])
+        total = sum(FLOOR_PENALTIES[i] for i in range(len(floor_line)) if i < len(FLOOR_PENALTIES) and floor_line[i] != "START")
+        color = (200, 80, 80) if total < 0 else DIM_TEXT
+        pnl = self.font_small.render(f"Penalit\xe9: {total}", True, color)
+        self.screen.blit(pnl, (px + pwidth - pnl.get_width() - self.s(15), y_pos + self.s(26)))
 
     def _draw_game_over(self):
         overlay = pygame.Surface((self.WIDTH, self.HEIGHT))
@@ -524,16 +530,14 @@ class AzulUI:
         if current != self.my_player:
             return None
 
-        if self.selected_dest_row is not None:
-            if self.confirm_btn_rect and self.confirm_btn_rect.collidepoint(pos):
-                return self._make_action(self.selected_dest_row)
-
         tile_result = self._check_tile_click(pos)
         if tile_result is not None:
             return tile_result
 
         if self.selected_color is not None:
-            self._check_pattern_click(pos)
+            action = self._check_pattern_click(pos)
+            if action is not None:
+                return action
 
         return None
 
@@ -586,7 +590,6 @@ class AzulUI:
             self.selected_center = True
 
         self.selected_color = color
-        self.selected_dest_row = None
         self._update_valid_lines()
 
         if not self.valid_lines:
@@ -612,8 +615,7 @@ class AzulUI:
                 if j >= len(pattern_lines[i]):
                     tile_rect = pygame.Rect(tx, line_y, tile_sz, row_h)
                     if tile_rect.collidepoint(pos) and i in self.valid_lines:
-                        self.selected_dest_row = i
-                        return
+                        return self._make_action(i)
 
         return None
 
@@ -649,7 +651,5 @@ class AzulUI:
         self.selected_factory = -1
         self.selected_center = False
         self.selected_color = None
-        self.selected_dest_row = None
-        self.confirm_btn_rect = None
         self.valid_lines = []
         return action
