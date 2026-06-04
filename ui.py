@@ -40,6 +40,9 @@ LIGHT_COLORS = {
     Color.WHITE: (255, 255, 250),
 }
 
+VALID_LINE_COLOR = (140, 140, 145)
+SELECTED_LINE_COLOR = (170, 170, 175)
+
 
 def draw_rounded_rect(surface, color, rect, radius=8):
     pygame.draw.rect(surface, color, rect, border_radius=radius)
@@ -92,12 +95,12 @@ class AzulUI:
         self.valid_lines = []
         self.message = ""
         self.message_timer = 0
+        self.selected_dest_row = None
+        self.confirm_btn_rect = None
         self.connected = False
         self.game_started = False
         self.waiting_for_opponent = not is_host
         self.connection_status = ""
-        self.show_color_picker = False
-        self.picker_colors = []
 
     def s(self, v):
         return int(v * self.scale + 0.5)
@@ -108,7 +111,8 @@ class AzulUI:
         self.selected_factory = -1
         self.selected_center = False
         self.selected_color = None
-        self.show_color_picker = False
+        self.selected_dest_row = None
+        self.confirm_btn_rect = None
 
     def set_message(self, msg, duration=120):
         self.message = msg
@@ -205,8 +209,8 @@ class AzulUI:
         self._draw_player_board(players[self.my_player], my_board_y, True, is_my_turn)
         self._draw_player_board(players[self.opponent], opp_board_y, False, False)
 
-        if self.show_color_picker and is_my_turn:
-            self._draw_color_picker()
+        if self.selected_color is not None and is_my_turn:
+            self._draw_selection_panel()
 
         if self.message and self.message_timer > 0:
             msg_surf = self.font_med.render(self.message, True, HIGHLIGHT_COLOR)
@@ -237,9 +241,6 @@ class AzulUI:
         label = self.font_small.render(f"F{idx + 1}", True, DIM_TEXT)
         self.screen.blit(label, (x - label.get_width() // 2, y - fhalf + self.s(4)))
 
-        if idx == self.selected_factory and self.show_color_picker:
-            return
-
         tile_positions = [(-self.s(15), -self.s(15)), (self.s(15), -self.s(15)), (-self.s(15), self.s(15)), (self.s(15), self.s(15))]
         ts = self.s(20)
         for j, tile in enumerate(tiles):
@@ -269,27 +270,64 @@ class AzulUI:
             pygame.draw.circle(self.screen, (255, 200, 50), (x + cw // 2 - self.s(16), y + self.s(10)), self.s(6))
             pygame.draw.circle(self.screen, (255, 255, 255), (x + cw // 2 - self.s(16), y + self.s(10)), self.s(4))
 
-    def _draw_color_picker(self):
-        overlay = pygame.Surface((self.WIDTH, self.HEIGHT))
-        overlay.set_alpha(180)
-        overlay.fill((0, 0, 0))
-        self.screen.blit(overlay, (0, 0))
+    def _draw_selection_panel(self):
+        if self.selected_color is None:
+            return
 
-        cx = self.WIDTH // 2
-        cy = self.HEIGHT // 2
-        picker_tile = self.s(36)
-        picker_gap = self.s(64)
-        pw = picker_gap * len(self.picker_colors) + self.s(40)
-        ph = self.s(90)
-        rect = pygame.Rect(cx - pw // 2, cy - ph // 2, pw, ph)
-        draw_rounded_rect(self.screen, (60, 62, 68), rect, self.s(12))
+        factories = self.state.get("factories", [])
+        center = self.state.get("center", [])
 
-        lbl = self.font_small.render("Choisissez une couleur:", True, TEXT_COLOR)
-        self.screen.blit(lbl, (cx - lbl.get_width() // 2, cy - self.s(32)))
+        count = 0
+        source_name = ""
 
-        for i, col in enumerate(self.picker_colors):
-            tx = cx - (len(self.picker_colors) * picker_gap) // 2 + i * picker_gap
-            draw_tile(self.screen, col, tx, cy + self.s(2), picker_tile)
+        if self.selected_factory >= 0:
+            factory_tiles = factories[self.selected_factory]
+            count = sum(1 for t in factory_tiles if t == self.selected_color.value)
+            source_name = f"F{self.selected_factory + 1}"
+        elif self.selected_center:
+            real_tiles = [c for c in center if not isinstance(c, str)]
+            count = sum(1 for t in real_tiles if t == self.selected_color.value)
+            source_name = "Centre"
+
+        pw = self.s(260)
+        ph = self.s(55)
+        px = self.WIDTH // 2 - pw // 2
+        py = self.s(160)
+
+        rect = pygame.Rect(px, py, pw, ph)
+        draw_rounded_rect(self.screen, (60, 62, 68), rect, self.s(8))
+        pygame.draw.rect(self.screen, (80, 82, 88), rect, 2, border_radius=self.s(8))
+
+        tile_sz = self.s(28)
+        draw_tile(self.screen, self.selected_color, px + self.s(12), py + (ph - tile_sz) // 2, tile_sz)
+
+        count_text = self.font_med.render(f"x{count}", True, TEXT_COLOR)
+        self.screen.blit(count_text, (px + self.s(50), py + self.s(6)))
+
+        src_text = self.font_small.render(source_name, True, DIM_TEXT)
+        self.screen.blit(src_text, (px + self.s(50), py + self.s(28)))
+
+        if self.selected_dest_row is not None:
+            dest_text = self.font_small.render(f"Ligne {self.selected_dest_row + 1}", True, TEXT_COLOR)
+            self.screen.blit(dest_text, (px + self.s(120), py + self.s(8)))
+
+            btn_w = self.s(90)
+            btn_h = self.s(28)
+            btn_x = px + pw - btn_w - self.s(10)
+            btn_y = py + (ph - btn_h) // 2
+            btn_rect = pygame.Rect(btn_x, btn_y, btn_w, btn_h)
+            draw_rounded_rect(self.screen, (70, 140, 70), btn_rect, self.s(5))
+            pygame.draw.rect(self.screen, (90, 170, 90), btn_rect, 1, border_radius=self.s(5))
+
+            btn_text = self.font_small.render("Confirmer", True, (255, 255, 255))
+            self.screen.blit(btn_text, (btn_x + (btn_w - btn_text.get_width()) // 2, btn_y + (btn_h - btn_text.get_height()) // 2))
+
+            self.confirm_btn_rect = btn_rect
+        else:
+            self.confirm_btn_rect = None
+
+        hint = self.font_small.render("Cliquez sur une ligne de motif ci-dessous", True, DIM_TEXT)
+        self.screen.blit(hint, (px, py + ph + self.s(4)))
 
     def _draw_player_board(self, player, y_pos, is_me, is_my_turn):
         px = self.s(40)
@@ -310,7 +348,7 @@ class AzulUI:
 
         if is_me and is_my_turn and self.state.get("phase") == "factory_offer":
             instruct = self.font_small.render(
-                "Cliquez sur une fabrique ou le centre, choisissez une couleur, puis une ligne de motif",
+                "Cliquez sur un carreau, choisissez une ligne de motif, puis Confirmer",
                 True, (200, 200, 100),
             )
             self.screen.blit(instruct, (px + self.s(15), y_pos + board_height - self.s(18)))
@@ -335,12 +373,16 @@ class AzulUI:
             self.screen.blit(lbl, (line_x - label_offset, line_y))
 
             can_use = i in self.valid_lines
+            is_selected = (self.selected_dest_row == i)
             for j in range(max_size):
                 tx = line_x + j * tile_sz
                 if j < len(pattern_lines[i]):
                     draw_tile(self.screen, Color(pattern_lines[i][j]), tx, line_y, tile_sz)
                 else:
-                    col = HIGHLIGHT_COLOR if (can_use and j == len(pattern_lines[i])) else (65, 67, 73)
+                    if can_use and j == len(pattern_lines[i]):
+                        col = SELECTED_LINE_COLOR if is_selected else VALID_LINE_COLOR
+                    else:
+                        col = (65, 67, 73)
                     draw_empty_slot(self.screen, tx, line_y, tile_sz, col)
 
     def _draw_wall(self, player, x, y, ts):
@@ -482,107 +524,74 @@ class AzulUI:
         if current != self.my_player:
             return None
 
-        if self.show_color_picker:
-            return self._handle_color_picker_click(pos)
+        if self.selected_dest_row is not None:
+            if self.confirm_btn_rect and self.confirm_btn_rect.collidepoint(pos):
+                return self._make_action(self.selected_dest_row)
 
-        factory_result = self._check_factory_click(pos)
-        if factory_result is not None:
-            return factory_result
+        tile_result = self._check_tile_click(pos)
+        if tile_result is not None:
+            return tile_result
 
-        center_result = self._check_center_click(pos)
-        if center_result is not None:
-            return center_result
-
-        if self.selected_color is not None and self.selected_factory >= 0:
-            line_result = self._check_pattern_click(pos)
-            if line_result is not None:
-                return line_result
-
-        if self.selected_color is not None and self.selected_center:
-            line_result = self._check_pattern_click(pos)
-            if line_result is not None:
-                return line_result
+        if self.selected_color is not None:
+            self._check_pattern_click(pos)
 
         return None
 
-    def _check_factory_click(self, pos):
+    def _check_tile_click(self, pos):
+        factories = self.state.get("factories", [])
         cx = self.WIDTH // 2
         cy = self.s(290)
         factory_radius = self.s(48)
-        fhalf = self.s(42)
-        fw = self.s(84)
-        factories = self.state.get("factories", [])
 
         for i in range(FACTORY_COUNT):
+            if not factories[i]:
+                continue
             angle = -math.pi / 2 + (i / FACTORY_COUNT) * 2 * math.pi
             fx = cx + int(factory_radius * 3.2 * math.cos(angle))
             fy = cy + int(factory_radius * 2.0 * math.sin(angle))
-            rect = pygame.Rect(fx - fhalf, fy - fhalf, fw, fw)
-            if rect.collidepoint(pos) and factories[i]:
-                colors_in_factory = list(set(t for t in factories[i] if not isinstance(t, str)))
-                if len(colors_in_factory) == 1:
-                    self.selected_factory = i
-                    self.selected_center = False
-                    self.selected_color = Color(colors_in_factory[0])
-                    self._update_valid_lines()
-                    self.show_color_picker = False
-                    if not self.valid_lines:
-                        return self._make_action(-1)
-                    return None
-                elif len(colors_in_factory) > 1:
-                    self.selected_factory = i
-                    self.selected_center = False
-                    self.selected_color = None
-                    self.picker_colors = [Color(c) for c in colors_in_factory]
-                    self.show_color_picker = True
-                    self.valid_lines = []
-                    return None
-        return None
 
-    def _check_center_click(self, pos):
-        cx = self.WIDTH // 2
-        cw = self.s(160)
-        ch = self.s(52)
-        rect = pygame.Rect(cx - cw // 2, self.s(430) - ch // 2, cw, ch)
+            tile_positions = [(-self.s(15), -self.s(15)), (self.s(15), -self.s(15)), (-self.s(15), self.s(15)), (self.s(15), self.s(15))]
+            ts = self.s(20)
+            for j, tile in enumerate(factories[i]):
+                if j < len(tile_positions):
+                    tx = fx + tile_positions[j][0]
+                    ty = fy + tile_positions[j][1]
+                    tile_rect = pygame.Rect(tx, ty, ts, ts)
+                    if tile_rect.collidepoint(pos):
+                        return self._select_color("factory", i, Color(tile))
+
         center = self.state.get("center", [])
         real_tiles = [c for c in center if not isinstance(c, str)]
+        if real_tiles:
+            cw = self.s(160)
+            ch = self.s(52)
+            tile_sz = self.s(16)
+            start_x = cx - (len(real_tiles) * tile_sz) // 2
+            cy = self.s(430)
+            for i, tile in enumerate(real_tiles):
+                tx = start_x + i * tile_sz
+                ty = cy + self.s(4)
+                tile_rect = pygame.Rect(tx, ty, tile_sz, tile_sz)
+                if tile_rect.collidepoint(pos):
+                    return self._select_color("center", -1, Color(tile))
 
-        if rect.collidepoint(pos) and real_tiles:
-            colors_in_center = list(set(t for t in real_tiles))
-            if len(colors_in_center) == 1:
-                self.selected_center = True
-                self.selected_factory = -1
-                self.selected_color = Color(colors_in_center[0])
-                self._update_valid_lines()
-                self.show_color_picker = False
-                if not self.valid_lines:
-                    return self._make_action(-1)
-                return None
-            elif len(colors_in_center) > 1:
-                self.selected_center = True
-                self.selected_factory = -1
-                self.selected_color = None
-                self.picker_colors = [Color(c) for c in colors_in_center]
-                self.show_color_picker = True
-                self.valid_lines = []
-                return None
         return None
 
-    def _handle_color_picker_click(self, pos):
-        cx = self.WIDTH // 2
-        cy = self.HEIGHT // 2
-        picker_gap = self.s(64)
-        picker_tile = self.s(36)
-        for i, col in enumerate(self.picker_colors):
-            tx = cx - (len(self.picker_colors) * picker_gap) // 2 + i * picker_gap
-            rect = pygame.Rect(tx, cy + self.s(2), picker_tile, picker_tile)
-            if rect.collidepoint(pos):
-                self.selected_color = col
-                self._update_valid_lines()
-                self.show_color_picker = False
-                if not self.valid_lines:
-                    return self._make_action(-1)
-                return None
+    def _select_color(self, source_type, factory_idx, color):
+        if source_type == "factory":
+            self.selected_factory = factory_idx
+            self.selected_center = False
+        else:
+            self.selected_factory = -1
+            self.selected_center = True
+
+        self.selected_color = color
+        self.selected_dest_row = None
+        self._update_valid_lines()
+
+        if not self.valid_lines:
+            return self._make_action(-1)
+
         return None
 
     def _check_pattern_click(self, pos):
@@ -603,12 +612,8 @@ class AzulUI:
                 if j >= len(pattern_lines[i]):
                     tile_rect = pygame.Rect(tx, line_y, tile_sz, row_h)
                     if tile_rect.collidepoint(pos) and i in self.valid_lines:
-                        return self._make_action(i)
-
-        if self.selected_color is not None:
-            for i in range(5):
-                if i in self.valid_lines:
-                    return self._make_action(i)
+                        self.selected_dest_row = i
+                        return
 
         return None
 
@@ -644,5 +649,7 @@ class AzulUI:
         self.selected_factory = -1
         self.selected_center = False
         self.selected_color = None
+        self.selected_dest_row = None
+        self.confirm_btn_rect = None
         self.valid_lines = []
         return action
