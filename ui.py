@@ -72,16 +72,16 @@ class AzulUI:
         self.HEIGHT = info.current_h
         self.scale = min(self.WIDTH / REF_W, self.HEIGHT / REF_H)
 
-        self.OPP_BOARD_H = self.s(130)
-        self.MY_BOARD_H = self.s(156)
+        self.OPP_BOARD_H = self.s(205)
+        self.MY_BOARD_H = self.s(330)
 
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT), pygame.FULLSCREEN)
         pygame.display.set_caption("Azul - Jeu à 2 Joueurs")
         self.clock = pygame.time.Clock()
 
-        self.font_large = pygame.font.Font(None, self.s(36))
-        self.font_med = pygame.font.Font(None, self.s(28))
-        self.font_small = pygame.font.Font(None, self.s(22))
+        self.font_large = pygame.font.Font(None, self.s(48))
+        self.font_med = pygame.font.Font(None, self.s(36))
+        self.font_small = pygame.font.Font(None, self.s(28))
 
         self.is_host = is_host
         self.my_player = 0 if is_host else 1
@@ -199,8 +199,8 @@ class AzulUI:
         players = self.state.get("players", [])
 
         self._draw_factories(factories, center, is_my_turn)
-        my_board_y = self.s(500)
-        opp_board_y = self.s(18)
+        my_board_y = self.s(510)
+        opp_board_y = self.s(25)
         self._draw_player_board(players[self.my_player], my_board_y, True, is_my_turn)
         self._draw_player_board(players[self.opponent], opp_board_y, False, False)
 
@@ -214,20 +214,20 @@ class AzulUI:
 
     def _draw_factories(self, factories, center, is_my_turn):
         cx = self.WIDTH // 2
-        cy = self.s(290)
-        factory_radius = self.s(48)
+        cy = self.s(320)
+        factory_radius = self.s(60)
 
         for i in range(FACTORY_COUNT):
             angle = -math.pi / 2 + (i / FACTORY_COUNT) * 2 * math.pi
-            fx = cx + int(factory_radius * 3.2 * math.cos(angle))
-            fy = cy + int(factory_radius * 2.0 * math.sin(angle))
+            fx = cx + int(factory_radius * 3.8 * math.cos(angle))
+            fy = cy + int(factory_radius * 2.8 * math.sin(angle))
             self._draw_factory(fx, fy, i, factories[i], is_my_turn)
 
-        self._draw_center_pile(cx, self.s(430), center, is_my_turn)
+        self._draw_center_pile(cx, self.s(470), center, is_my_turn)
 
     def _draw_factory(self, x, y, idx, tiles, is_my_turn):
-        fw = self.s(84)
-        fhalf = self.s(42)
+        fw = self.s(120)
+        fhalf = self.s(60)
         rect = pygame.Rect(x - fhalf, y - fhalf, fw, fw)
         color = HIGHLIGHT_COLOR if (self.selected_factory == idx and is_my_turn) else PANEL_COLOR
         draw_rounded_rect(self.screen, color, rect, self.s(10))
@@ -236,8 +236,9 @@ class AzulUI:
         label = self.font_small.render(f"F{idx + 1}", True, DIM_TEXT)
         self.screen.blit(label, (x - label.get_width() // 2, y - fhalf + self.s(4)))
 
-        tile_positions = [(-self.s(15), -self.s(15)), (self.s(15), -self.s(15)), (-self.s(15), self.s(15)), (self.s(15), self.s(15))]
-        ts = self.s(20)
+        offset = self.s(22)
+        tile_positions = [(-offset, -offset), (offset, -offset), (-offset, offset), (offset, offset)]
+        ts = self.s(30)
         for j, tile in enumerate(tiles):
             if j < len(tile_positions):
                 tx = x + tile_positions[j][0]
@@ -245,25 +246,25 @@ class AzulUI:
                 draw_tile(self.screen, Color(tile), tx, ty, ts)
 
     def _draw_center_pile(self, x, y, center, is_my_turn):
-        cw = self.s(160)
-        ch = self.s(52)
+        cw = self.s(260)
+        ch = self.s(72)
         rect = pygame.Rect(x - cw // 2, y - ch // 2, cw, ch)
         col = HIGHLIGHT_COLOR if self.selected_center else PANEL_COLOR
-        draw_rounded_rect(self.screen, col, rect, self.s(8))
-        pygame.draw.rect(self.screen, (80, 82, 88), rect, 2, border_radius=self.s(8))
+        draw_rounded_rect(self.screen, col, rect, self.s(10))
+        pygame.draw.rect(self.screen, (80, 82, 88), rect, 2, border_radius=self.s(10))
 
         lbl = self.font_small.render("Centre", True, DIM_TEXT)
         self.screen.blit(lbl, (x - lbl.get_width() // 2, y - ch // 2 + self.s(6)))
 
         real_tiles = [c for c in center if not isinstance(c, str)]
         has_start = any(c == "START" for c in center)
-        tile_sz = self.s(16)
+        tile_sz = self.s(24)
         start_x = x - (len(real_tiles) * tile_sz) // 2
         for i, tile in enumerate(real_tiles):
-            draw_tile(self.screen, Color(tile), start_x + i * tile_sz, y + self.s(4), tile_sz)
+            draw_tile(self.screen, Color(tile), start_x + i * tile_sz, y + self.s(6), tile_sz)
         if has_start:
-            pygame.draw.circle(self.screen, (255, 200, 50), (x + cw // 2 - self.s(16), y + self.s(10)), self.s(6))
-            pygame.draw.circle(self.screen, (255, 255, 255), (x + cw // 2 - self.s(16), y + self.s(10)), self.s(4))
+            pygame.draw.circle(self.screen, (255, 200, 50), (x + cw // 2 - self.s(24), y + self.s(12)), self.s(9))
+            pygame.draw.circle(self.screen, (255, 255, 255), (x + cw // 2 - self.s(24), y + self.s(12)), self.s(6))
 
     def _draw_selection_panel(self):
         if self.selected_color is None:
@@ -284,26 +285,26 @@ class AzulUI:
             count = sum(1 for t in real_tiles if t == self.selected_color.value)
             source_name = "Centre"
 
-        pw = self.s(260)
-        ph = self.s(55)
+        pw = self.s(350)
+        ph = self.s(70)
         px = self.WIDTH // 2 - pw // 2
-        py = self.s(160)
+        py = self.s(240)
 
         rect = pygame.Rect(px, py, pw, ph)
-        draw_rounded_rect(self.screen, (60, 62, 68), rect, self.s(8))
-        pygame.draw.rect(self.screen, (80, 82, 88), rect, 2, border_radius=self.s(8))
+        draw_rounded_rect(self.screen, (60, 62, 68), rect, self.s(10))
+        pygame.draw.rect(self.screen, (80, 82, 88), rect, 2, border_radius=self.s(10))
 
-        tile_sz = self.s(28)
-        draw_tile(self.screen, self.selected_color, px + self.s(12), py + (ph - tile_sz) // 2, tile_sz)
+        tile_sz = self.s(36)
+        draw_tile(self.screen, self.selected_color, px + self.s(14), py + (ph - tile_sz) // 2, tile_sz)
 
         count_text = self.font_med.render(f"x{count}", True, TEXT_COLOR)
-        self.screen.blit(count_text, (px + self.s(50), py + self.s(6)))
+        self.screen.blit(count_text, (px + self.s(60), py + self.s(8)))
 
         src_text = self.font_small.render(source_name, True, DIM_TEXT)
-        self.screen.blit(src_text, (px + self.s(50), py + self.s(28)))
+        self.screen.blit(src_text, (px + self.s(60), py + self.s(34)))
 
         hint = self.font_small.render("Choisissez une ligne de motif", True, DIM_TEXT)
-        self.screen.blit(hint, (px + self.s(120), py + self.s(8)))
+        self.screen.blit(hint, (px + self.s(140), py + self.s(10)))
 
     def _draw_player_board(self, player, y_pos, is_me, is_my_turn):
         px = self.s(40)
@@ -323,14 +324,14 @@ class AzulUI:
         self.screen.blit(sc, (px + pwidth - sc.get_width() - self.s(15), y_pos + self.s(8)))
 
         if is_me:
-            row_h = self.s(18)
-            pat_tile = self.s(16)
-            wall_ts = self.s(18)
-            floor_ts = self.s(20)
-            board_top = y_pos + self.s(38)
-            floor_y = board_top + 5 * row_h + self.s(8)
+            row_h = self.s(28)
+            pat_tile = self.s(24)
+            wall_ts = self.s(26)
+            floor_ts = self.s(28)
+            board_top = y_pos + self.s(45)
+            floor_y = board_top + 5 * row_h + self.s(10)
             pat_x = px + self.s(15)
-            wall_x = pat_x + 5 * pat_tile + self.s(10)
+            wall_x = pat_x + 5 * pat_tile + self.s(12)
 
             self._draw_pattern_lines(player, pat_x, board_top, row_h, pat_tile)
             self._draw_wall(player, wall_x, board_top, wall_ts, row_h)
@@ -340,16 +341,16 @@ class AzulUI:
                 instruct = self.font_small.render(
                     "Cliquez sur un carreau, puis une ligne de motif", True, (200, 200, 100),
                 )
-                self.screen.blit(instruct, (px + self.s(15), y_pos + board_height - self.s(18)))
+                self.screen.blit(instruct, (px + self.s(15), y_pos + board_height - self.s(20)))
         else:
-            row_h = self.s(15)
-            pat_tile = self.s(13)
-            wall_ts = self.s(15)
-            floor_ts = self.s(14)
-            board_top = y_pos + self.s(35)
-            floor_y = board_top + 5 * row_h + self.s(6)
+            row_h = self.s(22)
+            pat_tile = self.s(20)
+            wall_ts = self.s(22)
+            floor_ts = self.s(20)
+            board_top = y_pos + self.s(40)
+            floor_y = board_top + 5 * row_h + self.s(8)
             pat_x = px + self.s(15)
-            wall_x = pat_x + 5 * pat_tile + self.s(8)
+            wall_x = pat_x + 5 * pat_tile + self.s(10)
 
             self._draw_pattern_lines(player, pat_x, board_top, row_h, pat_tile)
             self._draw_wall(player, wall_x, board_top, wall_ts, row_h)
@@ -382,7 +383,7 @@ class AzulUI:
 
     def _draw_wall(self, player, x, y, ts, row_h):
         wall = player.get("wall", [])
-        gap = ts + self.s(2)
+        gap = ts + self.s(3)
         for r in range(5):
             row_y = y + r * row_h
             for c in range(5):
@@ -406,9 +407,9 @@ class AzulUI:
         lbl = self.font_small.render("Plancher:", True, DIM_TEXT)
         self.screen.blit(lbl, (x, y))
 
-        slot_gap = ts + self.s(4)
+        slot_gap = ts + self.s(6)
         for i in range(7):
-            fx = x + self.s(75) + i * slot_gap
+            fx = x + self.s(85) + i * slot_gap
             if i < len(floor_line):
                 tile = floor_line[i]
                 if tile == "START":
@@ -544,18 +545,19 @@ class AzulUI:
     def _check_tile_click(self, pos):
         factories = self.state.get("factories", [])
         cx = self.WIDTH // 2
-        cy = self.s(290)
-        factory_radius = self.s(48)
+        cy = self.s(320)
+        factory_radius = self.s(60)
 
         for i in range(FACTORY_COUNT):
             if not factories[i]:
                 continue
             angle = -math.pi / 2 + (i / FACTORY_COUNT) * 2 * math.pi
-            fx = cx + int(factory_radius * 3.2 * math.cos(angle))
-            fy = cy + int(factory_radius * 2.0 * math.sin(angle))
+            fx = cx + int(factory_radius * 3.8 * math.cos(angle))
+            fy = cy + int(factory_radius * 2.8 * math.sin(angle))
 
-            tile_positions = [(-self.s(15), -self.s(15)), (self.s(15), -self.s(15)), (-self.s(15), self.s(15)), (self.s(15), self.s(15))]
-            ts = self.s(20)
+            offset = self.s(22)
+            tile_positions = [(-offset, -offset), (offset, -offset), (-offset, offset), (offset, offset)]
+            ts = self.s(30)
             for j, tile in enumerate(factories[i]):
                 if j < len(tile_positions):
                     tx = fx + tile_positions[j][0]
@@ -567,14 +569,12 @@ class AzulUI:
         center = self.state.get("center", [])
         real_tiles = [c for c in center if not isinstance(c, str)]
         if real_tiles:
-            cw = self.s(160)
-            ch = self.s(52)
-            tile_sz = self.s(16)
+            tile_sz = self.s(24)
             start_x = cx - (len(real_tiles) * tile_sz) // 2
-            cy = self.s(430)
+            cy = self.s(470)
             for i, tile in enumerate(real_tiles):
                 tx = start_x + i * tile_sz
-                ty = cy + self.s(4)
+                ty = cy + self.s(6)
                 tile_rect = pygame.Rect(tx, ty, tile_sz, tile_sz)
                 if tile_rect.collidepoint(pos):
                     return self._select_color("center", -1, Color(tile))
@@ -601,9 +601,9 @@ class AzulUI:
         player = self.state.get("players", [{}])[self.my_player]
         pattern_lines = player.get("pattern_lines", [])
         x = self.s(55)
-        y = self.s(500) + self.s(38)
-        tile_sz = self.s(20)
-        row_h = self.s(22)
+        y = self.s(510) + self.s(45)
+        tile_sz = self.s(24)
+        row_h = self.s(28)
 
         for i in range(5):
             max_size = i + 1
