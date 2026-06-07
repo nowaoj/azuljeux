@@ -189,6 +189,7 @@ class GameState:
         self.game_over = False
         self.winner = -1
         self.taken_from_center = [False, False]
+        self._end_bonuses = [{}, {}]
 
     def init_bag(self):
         self.bag = []
@@ -356,11 +357,16 @@ class GameState:
             self.calculate_final_scores()
 
     def calculate_final_scores(self):
+        self._end_bonuses = [{}, {}]
         for p in range(2):
             player = self.players[p]
-            player.score += player.count_horizontal_rows() * 2
-            player.score += player.count_vertical_cols() * 7
-            player.score += player.count_full_colors() * 10
+            hr = player.count_horizontal_rows()
+            vc = player.count_vertical_cols()
+            fc = player.count_full_colors()
+            self._end_bonuses[p] = {"rows": hr, "cols": vc, "colors": fc}
+            player.score += hr * 2
+            player.score += vc * 7
+            player.score += fc * 10
         if self.players[0].score > self.players[1].score:
             self.winner = 0
         elif self.players[1].score > self.players[0].score:
@@ -383,6 +389,7 @@ class GameState:
         self.start_round()
 
     def get_state_snapshot(self):
+        bonus = getattr(self, "_end_bonuses", [{}, {}])
         return {
             "factories": [[c.value for c in f] for f in self.factories],
             "center": [c if isinstance(c, str) else c.value for c in self.center],
@@ -392,6 +399,9 @@ class GameState:
                     "wall": [[c.value if c is not None else None for c in row] for row in self.players[i].wall],
                     "floor_line": [c.value if isinstance(c, Color) else c for c in self.players[i].floor_line],
                     "score": self.players[i].score,
+                    "bonus_rows": bonus[i].get("rows", 0),
+                    "bonus_cols": bonus[i].get("cols", 0),
+                    "bonus_colors": bonus[i].get("colors", 0),
                 }
                 for i in range(2)
             ],

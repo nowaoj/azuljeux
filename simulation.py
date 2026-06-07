@@ -53,6 +53,8 @@ class Simulator:
                 "bot2": self.bots[1].name,
                 "score1": snapshot["players"][0]["score"],
                 "score2": snapshot["players"][1]["score"],
+                "bonus1": bonus_str(snapshot["players"][0]),
+                "bonus2": bonus_str(snapshot["players"][1]),
                 "winner": snapshot["winner"],
                 "rounds": snapshot["round"],
                 "total_turns": turn,
@@ -77,7 +79,8 @@ class Simulator:
             return
         with open(path, "w", newline="") as f:
             fields = ["game_id", "seed", "bot1", "bot2",
-                       "score1", "score2", "winner", "rounds", "total_turns"]
+                       "score1", "score2", "bonus1", "bonus2",
+                       "winner", "rounds", "total_turns"]
             w = csv.DictWriter(f, fieldnames=fields)
             w.writeheader()
             for r, _ in results:
@@ -111,6 +114,17 @@ class Simulator:
                         "score_p2_before": m["scores_before"][1],
                     })
         print(f"Moves saved to {path}")
+
+
+def bonus_str(b):
+    parts = []
+    if b["bonus_rows"] > 0:
+        parts.append(f"+{b['bonus_rows'] * 2}")
+    if b["bonus_cols"] > 0:
+        parts.append(f"+{b['bonus_cols'] * 7}")
+    if b["bonus_colors"] > 0:
+        parts.append(f"+{b['bonus_colors'] * 10}")
+    return f"({''.join(parts) if parts else '+0'})"
 
 
 def run():
