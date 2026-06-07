@@ -389,7 +389,7 @@ class GameState:
             "players": [
                 {
                     "pattern_lines": [[c.value for c in pl] for pl in self.players[i].pattern_lines],
-                    "wall": [[c.value if c else None for c in row] for row in self.players[i].wall],
+                    "wall": [[c.value if c is not None else None for c in row] for row in self.players[i].wall],
                     "floor_line": [c.value if isinstance(c, Color) else c for c in self.players[i].floor_line],
                     "score": self.players[i].score,
                 }
@@ -414,7 +414,7 @@ class GameState:
         for i in range(2):
             p = snapshot["players"][i]
             self.players[i].pattern_lines = [[Color(c) for c in pl] for pl in p["pattern_lines"]]
-            self.players[i].wall = [[Color(c) if c else None for c in row] for row in p["wall"]]
+            self.players[i].wall = [[Color(c) if c is not None else None for c in row] for row in p["wall"]]
             self.players[i].floor_line = []
             for c in p["floor_line"]:
                 if isinstance(c, str):

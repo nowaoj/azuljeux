@@ -133,9 +133,50 @@ class Bot(ABC):
 
 
 class RandomBot(Bot):
+    def __init__(self):
+        self.target_line = None
+        self.target_color = None
+
     def select_move(self, game, player_idx):
         moves = get_legal_moves(game, player_idx)
-        return random.choice(moves) if moves else None
+        if not moves:
+            return None
+        player = game.players[player_idx]
+
+        if self.target_line is not None:
+            line = player.pattern_lines[self.target_line]
+            if len(line) == self.target_line + 1:
+                self.target_line = None
+                self.target_color = None
+            else:
+                wall_col = _get_wall_col(self.target_line, self.target_color)
+                if wall_col < 0 or player.wall[self.target_line][wall_col] is not None:
+                    self.target_line = None
+                    self.target_color = None
+                elif not any(m for m in moves if m[2] == self.target_color and m[3] == self.target_line):
+                    self.target_line = None
+                    self.target_color = None
+
+        if self.target_line is None:
+            valid_targets = [(m[3], m[2]) for m in moves if m[3] >= 0]
+            if not valid_targets:
+                floor_moves = [m for m in moves if m[3] == -1]
+                return random.choice(floor_moves) if floor_moves else moves[0]
+            self.target_line, self.target_color = random.choice(valid_targets)
+
+        best_move = None
+        best_count = -1
+        for m in moves:
+            if m[2] == self.target_color and m[3] == self.target_line:
+                if m[0] == "factory":
+                    count = sum(1 for t in game.factories[m[1]] if t == m[2])
+                else:
+                    count = sum(1 for t in game.center if isinstance(t, Color) and t == m[2])
+                if count > best_count:
+                    best_count = count
+                    best_move = m
+
+        return best_move if best_move is not None else (moves[0] if moves else None)
 
 
 class GreedyBot(Bot):
