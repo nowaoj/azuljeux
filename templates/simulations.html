@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>All Simulations</h1>
+
+{% if simulations %}
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Bot 1</th>
+            <th>Bot 2</th>
+            <th>Games</th>
+            <th>Date</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for sim in simulations %}
+        <tr>
+            <td>{{ sim.id }}</td>
+            <td>{{ sim.bot1_name }}</td>
+            <td>{{ sim.bot2_name }}</td>
+            <td>{{ sim.num_games }}</td>
+            <td>{{ sim.created_at[:16] }}</td>
+            <td><a href="/simulations/{{ sim.id }}">View Results</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">No simulations yet. <a href="/run">Run your first simulation</a>.</p>
+{% endif %}
+
+{% endblock %}

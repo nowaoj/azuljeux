@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Run Simulation</h1>
+<p class="subtitle">Configure a bot match-up and run multiple games</p>
+
+<form method="POST" action="/run" class="sim-form">
+    <div class="form-row">
+        <div class="form-group">
+            <label for="bot1">Bot 1</label>
+            <select name="bot1" id="bot1" required>
+                {% for bot in bot_choices %}
+                <option value="{{ bot }}" {% if bot == "PlannedBot" %}selected{% endif %}>{{ bot }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="bot2">Bot 2</label>
+            <select name="bot2" id="bot2" required>
+                {% for bot in bot_choices %}
+                <option value="{{ bot }}" {% if bot == "RandomBot" %}selected{% endif %}>{{ bot }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="num_games">Number of games</label>
+            <input type="number" name="num_games" id="num_games" value="100" min="1" max="10000" required>
+        </div>
+        <div class="form-group">
+            <label for="seed">Seed (optional)</label>
+            <input type="number" name="seed" id="seed" placeholder="e.g. 42" min="0">
+            <span class="help-text">Same seed = reproducible results</span>
+        </div>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Launch Simulation</button>
+    </div>
+</form>
+
+{% endblock %}

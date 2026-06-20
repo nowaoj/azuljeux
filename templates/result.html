@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Simulation #{{ sim.id }}</h1>
+<p class="subtitle">{{ sim.bot1_name }} vs {{ sim.bot2_name }} &mdash; {{ total }} games</p>
+
+<div class="stats-grid">
+    <div class="stat-card {% if wins1 > wins2 %}win{% endif %}">
+        <span class="stat-label">{{ sim.bot1_name }}</span>
+        <span class="stat-value">{{ wins1 }}</span>
+        <span class="stat-label">{{ (wins1 / total * 100) | round(1) if total else 0 }}% win rate</span>
+    </div>
+    <div class="stat-card {% if wins2 > wins1 %}win{% endif %}">
+        <span class="stat-label">{{ sim.bot2_name }}</span>
+        <span class="stat-value">{{ wins2 }}</span>
+        <span class="stat-label">{{ (wins2 / total * 100) | round(1) if total else 0 }}% win rate</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Draws</span>
+        <span class="stat-value">{{ draws }}</span>
+        <span class="stat-label">{{ (draws / total * 100) | round(1) if total else 0 }}%</span>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <span class="stat-label">Avg score &mdash; {{ sim.bot1_name }}</span>
+        <span class="stat-value">{{ mean1 }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Avg score &mdash; {{ sim.bot2_name }}</span>
+        <span class="stat-value">{{ mean2 }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Avg rounds per game</span>
+        <span class="stat-value">{{ mean_rounds }}</span>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Score Distribution</h2>
+    {% if dist_buckets %}
+    <div class="histogram">
+        {% for bucket, count in dist_buckets %}
+        <div class="hist-bar-wrapper">
+            <div class="hist-label">{{ bucket }}-{{ bucket + 9 }}</div>
+            <div class="hist-bar" style="width: {{ (count / max_count * 100) | round }}%"></div>
+            <div class="hist-count">{{ count }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No data.</p>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h2>Game Results</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>{{ sim.bot1_name }}</th>
+                <th>{{ sim.bot2_name }}</th>
+                <th>Winner</th>
+                <th>Rounds</th>
+                <th>Turns</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for g in games %}
+            <tr>
+                <td>{{ g.game_index }}</td>
+                <td>{{ g.score1 }}</td>
+                <td>{{ g.score2 }}</td>
+                <td>
+                    {% if g.winner == 0 %}
+                    <span class="tag tag-bot1">{{ sim.bot1_name }}</span>
+                    {% elif g.winner == 1 %}
+                    <span class="tag tag-bot2">{{ sim.bot2_name }}</span>
+                    {% else %}
+                    <span class="tag tag-draw">Draw</span>
+                    {% endif %}
+                </td>
+                <td>{{ g.rounds }}</td>
+                <td>{{ g.total_turns }}</td>
+                <td><a href="/games/{{ g.id }}/replay">Replay</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

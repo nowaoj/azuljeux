@@ -307,7 +307,9 @@ class GameState:
                 return False
             tiles, got_start = result
             if got_start:
-                self.players[self.current_player].floor_line.append("START")
+                player = self.players[self.current_player]
+                if len(player.floor_line) < 7:
+                    player.floor_line.append("START")
             if line_idx >= 0:
                 overflow = self.place_tiles_on_pattern(self.current_player, line_idx, tiles)
                 if overflow:

@@ -1,158 +1,133 @@
-import csv
+import json
 import random
-from game import GameState, Color, COLOR_NAMES
+from multiprocessing import Pool
+
+from game import GameState, COLOR_NAMES
+from bots import GreedyBot, PlannedBot, RandomBot, FixedPriorityOpponent
+from db import create_simulation, insert_game, insert_move, insert_snapshot
+
+BOT_REGISTRY = {
+    "GreedyBot": GreedyBot,
+    "PlannedBot": PlannedBot,
+    "RandomBot": RandomBot,
+    "FixedPriorityOpponent": FixedPriorityOpponent,
+}
 
 
-class Simulator:
-    def __init__(self, bot_p1, bot_p2):
-        self.bots = [bot_p1, bot_p2]
+def _run_one(args):
+    bot1_name, bot2_name, seed, game_index = args
+    rng = random.Random(seed) if seed is not None else random.Random()
 
-    def run_games(self, n, seed=None, results_path=None, moves_path=None):
-        results = []
-        for game_id in range(n):
-            actual_seed = seed + game_id if seed is not None else None
-            if actual_seed is not None:
-                random.seed(actual_seed)
+    bot1_cls = BOT_REGISTRY[bot1_name]
+    bot2_cls = BOT_REGISTRY[bot2_name]
+    bot1 = bot1_cls()
+    bot2 = bot2_cls()
 
-            game = GameState()
-            game.init_bag()
-            game.start_round()
-            move_log = []
-            turn = 0
+    game = GameState()
+    game.init_bag()
+    game.start_round()
 
-            while not game.game_over:
-                player = game.current_player
-                bot = self.bots[player]
-                move = bot.choose_move(game, player)
-                if move is None:
-                    break
+    moves = []
+    snapshots = []
+    turn = 0
 
-                scores_before = [game.players[0].score, game.players[1].score]
-                move_log.append({
-                    "turn": turn,
-                    "player": player,
-                    "move": move,
-                    "scores_before": scores_before,
-                })
+    initial_snap = game.get_state_snapshot()
+    snapshots.append(("Game start", json.dumps(initial_snap)))
 
-                action_type, *args = move
-                if action_type == "center":
-                    _, _, color_val, line_val = move
-                    args = (color_val, line_val)
-                game.current_player_action(action_type, *args)
-                turn += 1
+    while not game.game_over:
+        player = game.current_player
+        bot = bot1 if player == 0 else bot2
+        move = bot.choose_move(game, player)
+        if move is None:
+            break
 
-                if game.phase == "wall_tiling":
-                    game.resolve_wall_tiling()
+        scores_before = [game.players[0].score, game.players[1].score]
 
-            snapshot = game.get_state_snapshot()
-            result = {
-                "game_id": game_id,
-                "seed": actual_seed,
-                "bot1": self.bots[0].name,
-                "bot2": self.bots[1].name,
-                "score1": snapshot["players"][0]["score"],
-                "score2": snapshot["players"][1]["score"],
-                "bonus1": bonus_str(snapshot["players"][0]),
-                "bonus2": bonus_str(snapshot["players"][1]),
-                "winner": snapshot["winner"],
-                "rounds": snapshot["round"],
-                "total_turns": turn,
-            }
-            results.append((result, move_log if moves_path else None))
+        color_name = COLOR_NAMES.get(move.color, str(move.color))
+        src = f"F{move.source_idx + 1}" if move.source_type == "factory" else "center"
+        dest = f"line {move.line_idx + 1}" if move.line_idx >= 0 else "floor"
+        action_desc = f"P{player} takes {color_name} from {src} -> {dest}"
 
-            self._print_progress(game_id, n, result)
+        moves.append({
+            "turn": turn,
+            "player": player,
+            "action_type": move.source_type,
+            "source_idx": move.source_idx if move.source_type == "factory" else -1,
+            "color": color_name,
+            "line_idx": move.line_idx,
+            "score_p1_before": scores_before[0],
+            "score_p2_before": scores_before[1],
+        })
 
-        self._export_results(results_path, results)
-        self._export_moves(moves_path, results)
-        return results
+        if move.source_type == "center":
+            game.current_player_action("center", move.color, move.line_idx)
+        else:
+            game.current_player_action("factory", move.source_idx, move.color, move.line_idx)
 
-    def _print_progress(self, game_id, total, result):
-        if total <= 1:
-            return
-        w = "P1" if result["winner"] == 0 else "P2" if result["winner"] == 1 else "Tie"
-        print(f"[{game_id + 1}/{total}] R{result['rounds']} | "
-              f"{result['score1']}-{result['score2']} | {w}")
+        turn += 1
 
-    def _export_results(self, path, results):
-        if not path:
-            return
-        with open(path, "w", newline="") as f:
-            fields = ["game_id", "seed", "bot1", "bot2",
-                       "score1", "score2", "bonus1", "bonus2",
-                       "winner", "rounds", "total_turns"]
-            w = csv.DictWriter(f, fieldnames=fields)
-            w.writeheader()
-            for r, _ in results:
-                w.writerow(r)
-        print(f"Results saved to {path}")
+        snap = game.get_state_snapshot()
+        snapshots.append((action_desc, json.dumps(snap)))
 
-    def _export_moves(self, path, results):
-        if not path:
-            return
-        with open(path, "w", newline="") as f:
-            fields = ["game_id", "turn", "player", "action_type",
-                       "source_idx", "color", "line_idx",
-                       "score_p1_before", "score_p2_before"]
-            w = csv.DictWriter(f, fieldnames=fields)
-            w.writeheader()
-            for r, moves in results:
-                if moves is None:
-                    continue
-                gid = r["game_id"]
-                for m in moves:
-                    atype, sidx, color, line = m["move"]
-                    w.writerow({
-                        "game_id": gid,
-                        "turn": m["turn"],
-                        "player": m["player"],
-                        "action_type": atype,
-                        "source_idx": sidx,
-                        "color": COLOR_NAMES.get(color, str(color)),
-                        "line_idx": line,
-                        "score_p1_before": m["scores_before"][0],
-                        "score_p2_before": m["scores_before"][1],
-                    })
-        print(f"Moves saved to {path}")
+        if game.phase == "wall_tiling":
+            game.resolve_wall_tiling()
+            snap = game.get_state_snapshot()
+            snapshots.append(("Wall tiling resolved", json.dumps(snap)))
+
+    final_snap = game.get_state_snapshot()
+    snapshots.append(("Game over", json.dumps(final_snap)))
+
+    return {
+        "game_index": game_index,
+        "seed": seed,
+        "score1": final_snap["players"][0]["score"],
+        "score2": final_snap["players"][1]["score"],
+        "winner": final_snap["winner"],
+        "rounds": final_snap["round"],
+        "total_turns": turn,
+        "moves": moves,
+        "snapshots": snapshots,
+    }
 
 
-def bonus_str(b):
-    parts = []
-    if b["bonus_rows"] > 0:
-        parts.append(f"+{b['bonus_rows'] * 2}")
-    if b["bonus_cols"] > 0:
-        parts.append(f"+{b['bonus_cols'] * 7}")
-    if b["bonus_colors"] > 0:
-        parts.append(f"+{b['bonus_colors'] * 10}")
-    return f"({''.join(parts) if parts else '+0'})"
+def run_simulation(bot1_name, bot2_name, num_games, seed=None, workers=None):
+    sim_id = create_simulation(bot1_name, bot2_name, num_games, seed)
 
+    args_list = [
+        (bot1_name, bot2_name, (seed + i) if seed is not None else None, i)
+        for i in range(num_games)
+    ]
 
-def run():
-    from bots import GreedyBot, PlannedBot, RandomBot
+    pool_size = workers if workers else min(num_games, 8)
+    with Pool(pool_size) as pool:
+        results = pool.map(_run_one, args_list)
 
-    N = 100
-    SEED = 42
+    for result in results:
+        gid = insert_game(
+            sim_id,
+            result["game_index"],
+            result["seed"],
+            result["score1"],
+            result["score2"],
+            result["winner"],
+            result["rounds"],
+            result["total_turns"],
+        )
 
-    print("=== Reedy vs Random ===")
-    sim = Simulator(GreedyBot(), RandomBot())
-    sim.run_games(N, seed=SEED,
-                  results_path="results_greedy_vs_random.csv",
-                  moves_path="moves_greedy_vs_random.csv")
+        for move in result["moves"]:
+            insert_move(
+                gid,
+                move["turn"],
+                move["player"],
+                move["action_type"],
+                move["source_idx"],
+                move["color"],
+                move["line_idx"],
+                move["score_p1_before"],
+                move["score_p2_before"],
+            )
 
-    print("\n=== Planned vs Random ===")
-    sim2 = Simulator(PlannedBot(), RandomBot())
-    sim2.run_games(N, seed=SEED + N,
-                   results_path="results_planned_vs_random.csv",
-                   moves_path="moves_planned_vs_random.csv")
+        for action_desc, state_json in result["snapshots"]:
+            insert_snapshot(gid, 0, state_json, action_desc)
 
-    print("\n=== Reedy vs Planned ===")
-    sim3 = Simulator(GreedyBot(), PlannedBot())
-    sim3.run_games(N, seed=SEED + 2 * N,
-                   results_path="results_greedy_vs_planned.csv",
-                   moves_path="moves_greedy_vs_planned.csv")
-
-    print("\nDone.")
-
-
-if __name__ == "__main__":
-    run()
+    return sim_id

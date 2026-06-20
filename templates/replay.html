@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Game Replay</h1>
+<p class="subtitle">Game #{{ game.id }} &mdash; Step <span id="step-display">1</span>/{{ total_steps }}</p>
+
+<div class="replay-controls">
+    <button onclick="goStep(-Infinity)">&#x23EE; First</button>
+    <button onclick="goStep(-1)">&#x25C0; Prev</button>
+    <span id="action-display" class="action-label">Game start</span>
+    <button onclick="goStep(1)">Next &#x25B6;</button>
+    <button onclick="goStep(Infinity)">Last &#x23ED;</button>
+</div>
+
+<div id="board" class="board"></div>
+
+<script>
+const snapshots = {{ snapshots_json | safe }};
+let current = 0;
+
+function renderBoard(snap) {
+    const state = JSON.parse(snap.state_json);
+    const stepData = snapshots[current];
+    document.getElementById("step-display").textContent = current + 1;
+    document.getElementById("action-display").textContent = stepData.action_desc || "";
+
+    const factories = state.factories || [];
+    const center = state.center || [];
+    const players = state.players || [{}, {}];
+    const phase = state.phase || "";
+    const round = state.round || 1;
+    const cp = state.current_player;
+    const gameOver = state.game_over || false;
+
+    const COLORS = {
+        0: "#0066CC", 1: "#FFCC00", 2: "#CC3333", 3: "#444444", 4: "#DDDDDD"
+    };
+    const COLOR_NAMES = {0: "blue", 1: "yellow", 2: "red", 3: "black", 4: "white"};
+    const WALL = [
+        [0,1,2,3,4], [4,0,1,2,3], [3,4,0,1,2], [2,3,4,0,1], [1,2,3,4,0]
+    ];
+    const FLOOR_PENALTIES = [-1,-1,-2,-2,-2,-3,-3];
+
+    let html = `<div class="replay-header">
+        <span>Round ${round}</span>
+        <span>Phase: ${phase}${gameOver ? " (Game Over)" : ""}</span>
+        <span>Current player: P${cp}</span>
+    </div>`;
+
+    html += `<div class="factories-area"><h3>Factories</h3><div class="factory-row">`;
+    factories.forEach((f, i) => {
+        html += `<div class="factory">
+            <div class="factory-label">F${i + 1}</div>
+            <div class="factory-tiles">`;
+        (f || []).forEach(t => {
+            const c = COLORS[t] || "#888";
+            html += `<span class="tile" style="background:${c}"></span>`;
+        });
+        html += `</div></div>`;
+    });
+    html += `</div></div>`;
+
+    const realCenter = center.filter(c => typeof c === "number");
+    const hasStart = center.includes("START");
+    html += `<div class="center-area"><h3>Center</h3>
+        <div class="center-tiles">`;
+    realCenter.forEach(t => {
+        const c = COLORS[t] || "#888";
+        html += `<span class="tile" style="background:${c}"></span>`;
+    });
+    if (hasStart) {
+        html += `<span class="tile start-tile" title="START">★</span>`;
+    }
+    html += `</div></div>`;
+
+    players.forEach((p, pi) => {
+        const patternLines = p.pattern_lines || [];
+        const wall = p.wall || [[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null]];
+        const floorLine = p.floor_line || [];
+        const score = p.score || 0;
+        const isCurrent = pi === cp;
+        html += `<div class="player-board ${isCurrent ? 'current-turn' : ''}">
+            <h3>Player ${pi} ${isCurrent ? '(current turn)' : ''} &mdash; Score: ${score}</h3>
+            <div class="board-grid">
+                <div class="pattern-lines">
+                    <div class="board-section-label">Pattern Lines</div>`;
+        patternLines.forEach((pl, li) => {
+            const maxSize = li + 1;
+            html += `<div class="pattern-line">
+                <span class="line-label">L${li + 1}:</span>`;
+            for (let j = 0; j < maxSize; j++) {
+                if (j < pl.length) {
+                    const c = COLORS[pl[j]] || "#888";
+                    html += `<span class="tile sm" style="background:${c}"></span>`;
+                } else {
+                    html += `<span class="tile sm empty"></span>`;
+                }
+            }
+            html += `</div>`;
+        });
+        html += `</div>
+                <div class="wall">
+                    <div class="board-section-label">Wall</div>`;
+        for (let r = 0; r < 5; r++) {
+            html += `<div class="wall-row">`;
+            for (let c = 0; c < 5; c++) {
+                const targetColor = COLORS[WALL[r][c]] || "#888";
+                if (wall[r][c] !== null) {
+                    html += `<span class="tile sm" style="background:${targetColor};border:2px solid #333"></span>`;
+                } else {
+                    html += `<span class="tile sm faded" style="background:${targetColor};opacity:0.25"></span>`;
+                }
+            }
+            html += `</div>`;
+        }
+        html += `</div>
+            </div>
+            <div class="floor-line">
+                <span class="board-section-label">Floor:</span>`;
+        for (let i = 0; i < 7; i++) {
+            if (i < floorLine.length) {
+                const tile = floorLine[i];
+                if (tile === "START") {
+                    html += `<span class="tile sm" style="background:gold;border:1px solid #b8860b" title="START">★</span>`;
+                } else {
+                    const c = COLORS[tile] || "#888";
+                    html += `<span class="tile sm" style="background:${c}"></span>`;
+                }
+            } else {
+                html += `<span class="tile sm empty"></span>`;
+            }
+            const pen = i < FLOOR_PENALTIES.length ? FLOOR_PENALTIES[i] : 0;
+            html += `<span class="floor-penalty">${pen}</span>`;
+        }
+        html += `</div></div>`;
+    });
+
+    document.getElementById("board").innerHTML = html;
+}
+
+function goStep(delta) {
+    if (delta === -Infinity) current = 0;
+    else if (delta === Infinity) current = snapshots.length - 1;
+    else current = Math.max(0, Math.min(snapshots.length - 1, current + delta));
+
+    renderBoard(snapshots[current]);
+}
+
+renderBoard(snapshots[0]);
+</script>
+
+{% endblock %}
