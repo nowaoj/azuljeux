@@ -21,6 +21,8 @@ def init_db():
             bot2_name TEXT NOT NULL,
             num_games INTEGER NOT NULL,
             seed INTEGER,
+            status TEXT DEFAULT 'pending',
+            games_completed INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -60,6 +62,21 @@ def init_db():
             FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
         );
     """)
+
+    # Migrations for existing databases
+    try:
+        conn.execute("ALTER TABLE snapshots ADD COLUMN evaluations_json TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE simulations ADD COLUMN status TEXT DEFAULT 'pending'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE simulations ADD COLUMN games_completed INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -74,6 +91,23 @@ def create_simulation(bot1_name, bot2_name, num_games, seed=None):
     conn.commit()
     conn.close()
     return sim_id
+
+
+def set_simulation_status(sim_id, status):
+    conn = get_conn()
+    conn.execute("UPDATE simulations SET status = ? WHERE id = ?", (status, sim_id))
+    conn.commit()
+    conn.close()
+
+
+def increment_games_completed(sim_id):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE simulations SET games_completed = games_completed + 1 WHERE id = ?",
+        (sim_id,),
+    )
+    conn.commit()
+    conn.close()
 
 
 def insert_game(sim_id, game_index, seed, score1, score2, winner, rounds, total_turns):
@@ -98,11 +132,11 @@ def insert_move(game_id, turn, player, action_type, source_idx, color, line_idx,
     conn.close()
 
 
-def insert_snapshot(game_id, turn, state_json, action_desc):
+def insert_snapshot(game_id, turn, state_json, action_desc, evaluations_json=None):
     conn = get_conn()
     conn.execute(
-        "INSERT INTO snapshots (game_id, turn, state_json, action_desc) VALUES (?, ?, ?, ?)",
-        (game_id, turn, state_json, action_desc),
+        "INSERT INTO snapshots (game_id, turn, state_json, action_desc, evaluations_json) VALUES (?, ?, ?, ?, ?)",
+        (game_id, turn, state_json, action_desc, evaluations_json),
     )
     conn.commit()
     conn.close()

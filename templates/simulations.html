@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 
+<style>
+.tag-running { background:#cce5ff; color:#004085; }
+.tag-done   { background:#d4edda; color:#155724; }
+.tag-failed { background:#f8d7da; color:#721c24; }
+.tag-pending{ background:#e2e3e5; color:#383d41; }
+</style>
+
 <h1>All Simulations</h1>
 
 {% if simulations %}
@@ -11,6 +18,7 @@
             <th>Bot 1</th>
             <th>Bot 2</th>
             <th>Games</th>
+            <th>Status</th>
             <th>Date</th>
             <th></th>
         </tr>
@@ -21,7 +29,8 @@
             <td>{{ sim.id }}</td>
             <td>{{ sim.bot1_name }}</td>
             <td>{{ sim.bot2_name }}</td>
-            <td>{{ sim.num_games }}</td>
+            <td>{{ sim.games_completed }} / {{ sim.num_games }}</td>
+            <td><span class="tag tag-{{ sim.status }}">{{ sim.status }}</span></td>
             <td>{{ sim.created_at[:16] }}</td>
             <td><a href="/simulations/{{ sim.id }}">View Results</a></td>
         </tr>
