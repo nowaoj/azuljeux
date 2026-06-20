@@ -18,6 +18,7 @@ def play_game(bot0, bot1):
     game.init_bag()
     game.start_round()
     penalty_acc = [0, 0]
+    ender = "none"
     while not game.game_over:
         if game.phase == "wall_tiling":
             for pi in range(2):
@@ -25,6 +26,11 @@ def play_game(bot0, bot1):
                     if i < len(FLOOR_PENALTIES):
                         penalty_acc[pi] -= FLOOR_PENALTIES[i]
             game.resolve_wall_tiling()
+            if game.game_over:
+                e = []
+                if game.players[0].has_complete_row(): e.append("0")
+                if game.players[1].has_complete_row(): e.append("1")
+                ender = "+".join(e) if e else "none"
             continue
         p = game.current_player
         bot = bot0 if p == 0 else bot1
@@ -40,6 +46,7 @@ def play_game(bot0, bot1):
         "wall0": game.players[0].wall, "wall1": game.players[1].wall,
         "winner": game.get_state_snapshot()["winner"],
         "penalty0": penalty_acc[0], "penalty1": penalty_acc[1],
+        "ender": ender,
     }
 
 N = 100
@@ -64,6 +71,7 @@ for fname, name_a, bot_a, name_b, bot_b in matchups:
             "cols_a": cols_completed(r["wall0"]), "cols_b": cols_completed(r["wall1"]),
             "colours_a": colour_sets(r["wall0"]), "colours_b": colour_sets(r["wall1"]),
             "winner": r["winner"],
+            "ender": r["ender"],
         })
     out = f"raw_{fname}.csv"
     with open(out, "w", newline="") as f:
