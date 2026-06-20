@@ -68,7 +68,7 @@ def run_simulation(bot1, bot2, gs, rng):
     while not game.game_over:
         player = game.current_player
         bot = bot1 if player == 0 else bot2
-        move = bot.select_move(game, player)
+        move = bot.choose_move(game, player)
         if move is None:
             break
         action_type, *args = move

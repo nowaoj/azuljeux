@@ -1,40 +1,34 @@
 from abc import ABC, abstractmethod
 import random
-from game import Color, FLOOR_PENALTIES, WALL_LAYOUT
+from typing import NamedTuple
+
+from game import Color, FLOOR_PENALTIES, WALL_LAYOUT, GameState
+
+AzulState = GameState
 
 
-def get_legal_moves(game, player_idx):
-    moves = []
-    for f_idx, factory in enumerate(game.factories):
-        if not factory:
-            continue
-        for color in set(factory):
-            valid_lines = _get_valid_lines(game, player_idx, color)
-            for line in valid_lines:
-                moves.append(("factory", f_idx, color, line))
-            moves.append(("factory", f_idx, color, -1))
-    center_colors = [t for t in game.center if isinstance(t, Color)]
-    for color in set(center_colors):
-        valid_lines = _get_valid_lines(game, player_idx, color)
-        for line in valid_lines:
-            moves.append(("center", -1, color, line))
-        moves.append(("center", -1, color, -1))
-    return moves
+class Move(NamedTuple):
+    source_type: str
+    source_idx: int
+    color: Color
+    line_idx: int
 
 
-def _get_valid_lines(game, player_idx, color):
-    player = game.players[player_idx]
-    return [i for i in range(5) if player.can_place_in_pattern(i, color)]
+WR = 1
+WC = 3
+WK = 5
 
 
-def _get_wall_col(row, color):
+def _get_wall_col(row: int, color: Color) -> int:
+    """Return the wall column index for a given row and color."""
     for c in range(5):
         if WALL_LAYOUT[row][c] == color:
             return c
     return -1
 
 
-def _compute_wall_score(wall, row, col):
+def _compute_wall_score(wall: list[list[Color | None]], row: int, col: int) -> int:
+    """Return the immediate score S for placing a tile at (row, col) on the wall."""
     hor = 1
     c = col - 1
     while c >= 0 and wall[row][c] is not None:
@@ -62,30 +56,60 @@ def _compute_wall_score(wall, row, col):
     return hor + ver
 
 
-def evaluate_move(game, player_idx, move):
-    source_type, source_idx, color, line_idx = move
+def _get_valid_lines(game: GameState, player_idx: int, color: Color) -> list[int]:
+    """Return pattern line indices where the given colour can be placed."""
+    player = game.players[player_idx]
+    return [i for i in range(5) if player.can_place_in_pattern(i, color)]
+
+
+def get_legal_moves(game: GameState, player_idx: int) -> list[Move]:
+    """Generate all legal moves for the player."""
+    moves: list[Move] = []
+    for f_idx, factory in enumerate(game.factories):
+        if not factory:
+            continue
+        for color in set(factory):
+            valid_lines = _get_valid_lines(game, player_idx, color)
+            for line in valid_lines:
+                moves.append(Move("factory", f_idx, color, line))
+            moves.append(Move("factory", f_idx, color, -1))
+    center_colors = [t for t in game.center if isinstance(t, Color)]
+    for color in set(center_colors):
+        valid_lines = _get_valid_lines(game, player_idx, color)
+        for line in valid_lines:
+            moves.append(Move("center", -1, color, line))
+        moves.append(Move("center", -1, color, -1))
+    return moves
+
+
+def evaluate_move(
+    game: GameState, player_idx: int, move: Move,
+) -> tuple[int, int, int, int, int, bool]:
+    """Return (S, P, R, C, K, completes) for a given move."""
     player = game.players[player_idx]
 
-    if source_type == "factory":
-        taken = sum(1 for t in game.factories[source_idx] if t == color)
+    if move.source_type == "factory":
+        taken = sum(1 for t in game.factories[move.source_idx] if t == move.color)
     else:
-        taken = sum(1 for t in game.center if isinstance(t, Color) and t == color)
+        taken = sum(1 for t in game.center if isinstance(t, Color) and t == move.color)
 
-    if line_idx == -1:
+    if move.line_idx == -1:
         tiles_placed = 0
         overflow = taken
     else:
-        pattern_line = player.pattern_lines[line_idx]
-        max_size = line_idx + 1
+        pattern_line = player.pattern_lines[move.line_idx]
+        max_size = move.line_idx + 1
         existing = len(pattern_line)
         placed = min(taken, max_size - existing)
         tiles_placed = placed
         overflow = taken - placed
 
     P = 0
-    got_start = (source_type == "center"
-                 and not game.taken_from_center[player_idx]
-                 and "START" in game.center)
+    got_start = (
+        move.source_type == "center"
+        and not game.taken_from_center[player_idx]
+        and "START" in game.center
+    )
     pos = len(player.floor_line)
     if got_start:
         if pos < len(FLOOR_PENALTIES):
@@ -98,46 +122,129 @@ def evaluate_move(game, player_idx, move):
 
     S = 0
     completes = False
-    if line_idx >= 0:
-        new_len = len(player.pattern_lines[line_idx]) + tiles_placed
-        if new_len == line_idx + 1:
+    if move.line_idx >= 0:
+        new_len = len(player.pattern_lines[move.line_idx]) + tiles_placed
+        if new_len == move.line_idx + 1:
             completes = True
-            wall_col = _get_wall_col(line_idx, color)
-            if wall_col >= 0 and player.wall[line_idx][wall_col] is None:
-                S = _compute_wall_score(player.wall, line_idx, wall_col)
+            wall_col = _get_wall_col(move.line_idx, move.color)
+            if wall_col >= 0 and player.wall[move.line_idx][wall_col] is None:
+                S = _compute_wall_score(player.wall, move.line_idx, wall_col)
 
-    R = len(player.pattern_lines[line_idx]) + tiles_placed if line_idx >= 0 else 0
-
-    if line_idx >= 0:
-        wall_col = _get_wall_col(line_idx, color)
-        if wall_col >= 0:
-            C = sum(1 for r in range(5) if player.wall[r][wall_col] is not None)
-        else:
-            C = 0
+    wall_col = _get_wall_col(move.line_idx, move.color) if move.line_idx >= 0 else -1
+    if move.line_idx >= 0 and wall_col >= 0:
+        row_tiles = sum(1 for c in range(5) if player.wall[move.line_idx][c] is not None)
+        R = row_tiles + (1 if completes else 0)
+        col_tiles = sum(1 for r in range(5) if player.wall[r][wall_col] is not None)
+        C = col_tiles + (1 if completes else 0)
     else:
+        R = 0
         C = 0
 
-    K = sum(1 for r in range(5) for c in range(5) if player.wall[r][c] == color)
+    K = sum(1 for r in range(5) for c in range(5) if player.wall[r][c] == move.color)
+    if completes:
+        K += 1
 
     return S, P, R, C, K, completes
 
 
 class Bot(ABC):
+    """Abstract base for all bots."""
+
     @abstractmethod
-    def select_move(self, game, player_idx):
-        pass
+    def choose_move(self, game: GameState, player_idx: int) -> Move | None:
+        ...
 
     @property
-    def name(self):
+    def name(self) -> str:
         return type(self).__name__
 
 
-class RandomBot(Bot):
-    def __init__(self):
-        self.target_line = None
-        self.target_color = None
+class GreedyBot(Bot):
+    """Greedy immediate-value maximiser."""
 
-    def select_move(self, game, player_idx):
+    def choose_move(self, game: GameState, player_idx: int) -> Move | None:
+        moves = get_legal_moves(game, player_idx)
+        if not moves:
+            return None
+
+        scored: list[tuple[int, bool, Move]] = []
+        for move in moves:
+            S, P, _, _, _, _ = evaluate_move(game, player_idx, move)
+            V = S - P
+            row = move.line_idx
+            row_key = row if row >= 0 else -999
+            avoids_floor = P == 0
+            scored.append((-V, -row_key, -avoids_floor, move))
+
+        scored.sort(key=lambda x: (x[0], x[1], x[2]))
+        best_V_key = scored[0][0]
+        best_row_key = scored[0][1]
+        best_avoid_key = scored[0][2]
+        tied = [
+            s for s in scored
+            if s[0] == best_V_key and s[1] == best_row_key and s[2] == best_avoid_key
+        ]
+        return random.choice(tied)[3]
+
+
+class PlannedBot(Bot):
+    """Weighted utility planner."""
+
+    def __init__(self, Wr: int = WR, Wc: int = WC, Wk: int = WK) -> None:
+        self.Wr = Wr
+        self.Wc = Wc
+        self.Wk = Wk
+
+    def choose_move(self, game: GameState, player_idx: int) -> Move | None:
+        moves = get_legal_moves(game, player_idx)
+        if not moves:
+            return None
+
+        scored: list[tuple[int, bool, int, Move]] = []
+        for move in moves:
+            S, P, R, C, K, completes = evaluate_move(game, player_idx, move)
+            V = S - P + R * self.Wr + C * self.Wc + K * self.Wk
+            row = move.line_idx
+            row_key = row if row >= 0 else 999
+            scored.append((-V, not completes, row_key, move))
+
+        scored.sort(key=lambda x: (x[0], x[1], x[2]))
+        best_V_key = scored[0][0]
+        best_comp_key = scored[0][1]
+        best_row_key = scored[0][2]
+        tied = [
+            s for s in scored
+            if s[0] == best_V_key and s[1] == best_comp_key and s[2] == best_row_key
+        ]
+        return tied[0][3]
+
+
+class FixedPriorityOpponent(Bot):
+    """Avoid the floor when possible; otherwise pick the move with the smallest floor penalty (ties broken randomly)."""
+
+    def choose_move(self, game: GameState, player_idx: int) -> Move | None:
+        moves = get_legal_moves(game, player_idx)
+        if not moves:
+            return None
+
+        no_floor = [m for m in moves if m.line_idx >= 0]
+        if no_floor:
+            return random.choice(no_floor)
+
+        evals = [(move, evaluate_move(game, player_idx, move)[1]) for move in moves]
+        min_p = min(p for _, p in evals)
+        best = [move for move, p in evals if p == min_p]
+        return random.choice(best)
+
+
+class RandomBot(Bot):
+    """Picks a random target line/colour and takes the largest available source."""
+
+    def __init__(self) -> None:
+        self.target_line: int | None = None
+        self.target_color: Color | None = None
+
+    def choose_move(self, game: GameState, player_idx: int) -> Move | None:
         moves = get_legal_moves(game, player_idx)
         if not moves:
             return None
@@ -153,86 +260,30 @@ class RandomBot(Bot):
                 if wall_col < 0 or player.wall[self.target_line][wall_col] is not None:
                     self.target_line = None
                     self.target_color = None
-                elif not any(m for m in moves if m[2] == self.target_color and m[3] == self.target_line):
+                elif not any(
+                    m for m in moves
+                    if m.color == self.target_color and m.line_idx == self.target_line
+                ):
                     self.target_line = None
                     self.target_color = None
 
         if self.target_line is None:
-            valid_targets = [(m[3], m[2]) for m in moves if m[3] >= 0]
+            valid_targets = [(m.line_idx, m.color) for m in moves if m.line_idx >= 0]
             if not valid_targets:
-                floor_moves = [m for m in moves if m[3] == -1]
+                floor_moves = [m for m in moves if m.line_idx == -1]
                 return random.choice(floor_moves) if floor_moves else moves[0]
             self.target_line, self.target_color = random.choice(valid_targets)
 
-        best_move = None
+        best_move: Move | None = None
         best_count = -1
         for m in moves:
-            if m[2] == self.target_color and m[3] == self.target_line:
-                if m[0] == "factory":
-                    count = sum(1 for t in game.factories[m[1]] if t == m[2])
+            if m.color == self.target_color and m.line_idx == self.target_line:
+                if m.source_type == "factory":
+                    count = sum(1 for t in game.factories[m.source_idx] if t == m.color)
                 else:
-                    count = sum(1 for t in game.center if isinstance(t, Color) and t == m[2])
+                    count = sum(1 for t in game.center if isinstance(t, Color) and t == m.color)
                 if count > best_count:
                     best_count = count
                     best_move = m
 
         return best_move if best_move is not None else (moves[0] if moves else None)
-
-
-class GreedyBot(Bot):
-    def select_move(self, game, player_idx):
-        moves = get_legal_moves(game, player_idx)
-        best = []
-        best_V = -10**9
-        best_row = -2
-        for move in moves:
-            S, P, _, _, _, _ = evaluate_move(game, player_idx, move)
-            V = S - P
-            _, _, _, row = move
-            row_val = row if row >= 0 else -1
-            if V > best_V or (V == best_V and row_val > best_row):
-                best_V = V
-                best_row = row_val
-                best = [move]
-            elif V == best_V and row_val == best_row:
-                best.append(move)
-        return best[0] if best else (moves[0] if moves else None)
-
-
-class PlannedBot(Bot):
-    def __init__(self, Wr=1, Wc=3, Wk=5):
-        self.Wr = Wr
-        self.Wc = Wc
-        self.Wk = Wk
-
-    def select_move(self, game, player_idx):
-        moves = get_legal_moves(game, player_idx)
-        best = []
-        best_V = -10**9
-        best_finishes = False
-        best_row = 999
-        for move in moves:
-            S, P, R, C, K, completes = evaluate_move(game, player_idx, move)
-            V = S - P + R * self.Wr + C * self.Wc + K * self.Wk
-            _, _, _, row = move
-            row_val = row if row >= 0 else 999
-
-            better = False
-            if V > best_V:
-                better = True
-            elif V == best_V:
-                if completes and not best_finishes:
-                    better = True
-                elif completes == best_finishes:
-                    if row_val < best_row:
-                        better = True
-                    elif row_val == best_row:
-                        best.append(move)
-
-            if better:
-                best_V = V
-                best_finishes = completes
-                best_row = row_val
-                best = [move]
-
-        return best[0] if best else (moves[0] if moves else None)

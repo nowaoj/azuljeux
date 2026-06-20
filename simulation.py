@@ -23,7 +23,7 @@ class Simulator:
             while not game.game_over:
                 player = game.current_player
                 bot = self.bots[player]
-                move = bot.select_move(game, player)
+                move = bot.choose_move(game, player)
                 if move is None:
                     break
 
@@ -133,7 +133,7 @@ def run():
     N = 100
     SEED = 42
 
-    print("=== Greedy vs Random ===")
+    print("=== Reedy vs Random ===")
     sim = Simulator(GreedyBot(), RandomBot())
     sim.run_games(N, seed=SEED,
                   results_path="results_greedy_vs_random.csv",
@@ -145,7 +145,7 @@ def run():
                    results_path="results_planned_vs_random.csv",
                    moves_path="moves_planned_vs_random.csv")
 
-    print("\n=== Greedy vs Planned ===")
+    print("\n=== Reedy vs Planned ===")
     sim3 = Simulator(GreedyBot(), PlannedBot())
     sim3.run_games(N, seed=SEED + 2 * N,
                    results_path="results_greedy_vs_planned.csv",
