@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from db import (init_db, get_simulations, get_simulation, get_games, get_game,
                 get_moves, get_snapshots, get_dashboard_stats)
 from simulation import run_simulation
-from bots import GreedyBot, PlannedBot, RandomBot, evaluate_move, get_legal_moves
+from bots import GreedyBot, PlannedBot, RandomBot, Move, evaluate_move, get_legal_moves
 from game import GameState, Color, WALL_LAYOUT, COLOR_NAMES
 
 app = FastAPI(title="Azul Game Analysis")
@@ -167,6 +167,209 @@ def bots_docs(request: Request):
         "greedy_top": greedy_top,
         "planned_top": planned_top,
         "all_moves": scored,
+    })
+
+
+# ── Scenario builder ────────────────────────────────────────────────
+
+BOT_INSTANCES = {
+    "GreedyBot": GreedyBot(),
+    "PlannedBot": PlannedBot(),
+    "RandomBot": RandomBot(),
+}
+
+
+def _scenario_defaults() -> dict:
+    """Return default form values matching the example state on /bots."""
+    gs = _build_example_state()
+    return _state_to_form(gs, "PlannedBot")
+
+
+def _state_to_form(gs: GameState, bot_name: str) -> dict:
+    """Serialise a GameState to flat form-field dict for template pre-fill."""
+    f: dict = {"bot": bot_name}
+    for fi in range(5):
+        tiles = gs.factories[fi] if fi < len(gs.factories) else []
+        for tj in range(4):
+            f[f"factory_{fi}_{tj}"] = str(tiles[tj].value) if tj < len(tiles) else ""
+    center_colors = [t for t in gs.center if isinstance(t, Color)]
+    for color in Color:
+        f[f"center_c_{color.value}"] = "on" if color in center_colors else ""
+    f["center_start"] = "on" if "START" in gs.center else ""
+    for pi in range(2):
+        p = gs.players[pi]
+        for li in range(5):
+            pl = p.pattern_lines[li]
+            if pl:
+                f[f"p{pi}_pl_{li}_color"] = str(pl[0].value)
+                f[f"p{pi}_pl_{li}_count"] = str(len(pl))
+            else:
+                f[f"p{pi}_pl_{li}_color"] = ""
+                f[f"p{pi}_pl_{li}_count"] = "0"
+        for r in range(5):
+            for c in range(5):
+                key = f"p{pi}_wall_{r}_{c}"
+                if p.wall[r][c] is not None:
+                    f[key] = "on"
+        floor_vals = []
+        for t in p.floor_line:
+            if t == "START":
+                floor_vals.append("START")
+            else:
+                floor_vals.append(str(t.value))
+        f[f"p{pi}_floor"] = ",".join(floor_vals)
+        f[f"p{pi}_score"] = str(p.score)
+    f["current_player"] = str(gs.current_player)
+    f["round"] = str(gs.round)
+    f["taken_from_center_0"] = "on" if gs._taken_from_center[0] else ""
+    f["taken_from_center_1"] = "on" if gs._taken_from_center[1] else ""
+    return f
+
+
+def _build_state_from_form(form) -> GameState:
+    """Parse form fields back into a GameState."""
+    gs = GameState()
+    # Factories
+    for fi in range(5):
+        gs.factories[fi] = []
+        for tj in range(4):
+            val = form.get(f"factory_{fi}_{tj}", "")
+            if val and val.strip():
+                try:
+                    gs.factories[fi].append(Color(int(val)))
+                except (ValueError, TypeError):
+                    pass
+    # Centre
+    gs.center = []
+    for c in range(5):
+        if form.get(f"center_c_{c}") == "on":
+            gs.center.append(Color(c))
+    if form.get("center_start") == "on":
+        gs.center.insert(0, "START")
+    # Players
+    for pi in range(2):
+        p = gs.players[pi]
+        for li in range(5):
+            color_val = form.get(f"p{pi}_pl_{li}_color", "")
+            count_val = form.get(f"p{pi}_pl_{li}_count", "0")
+            try:
+                cnt = int(count_val)
+            except (ValueError, TypeError):
+                cnt = 0
+            if color_val and cnt > 0:
+                try:
+                    color = Color(int(color_val))
+                    max_size = li + 1
+                    cnt = min(cnt, max_size)
+                    p.pattern_lines[li] = [color] * cnt
+                except (ValueError, TypeError):
+                    p.pattern_lines[li] = []
+            else:
+                p.pattern_lines[li] = []
+        for r in range(5):
+            for c in range(5):
+                key = f"p{pi}_wall_{r}_{c}"
+                if form.get(key) == "on":
+                    p.wall[r][c] = WALL_LAYOUT[r][c]
+        floor_str = form.get(f"p{pi}_floor", "")
+        p.floor_line = []
+        if floor_str:
+            for token in floor_str.split(","):
+                token = token.strip()
+                if token.upper() == "START":
+                    p.floor_line.append("START")
+                elif token:
+                    try:
+                        p.floor_line.append(Color(int(token)))
+                    except (ValueError, TypeError):
+                        pass
+        try:
+            p.score = max(0, int(form.get(f"p{pi}_score", "0")))
+        except (ValueError, TypeError):
+            p.score = 0
+    try:
+        gs.current_player = int(form.get("current_player", "0"))
+    except (ValueError, TypeError):
+        gs.current_player = 0
+    try:
+        gs.round = max(1, int(form.get("round", "1")))
+    except (ValueError, TypeError):
+        gs.round = 1
+    if form.get("taken_from_center_0") == "on":
+        gs._taken_from_center[0] = True
+    if form.get("taken_from_center_1") == "on":
+        gs._taken_from_center[1] = True
+    return gs
+
+
+@app.get("/scenario")
+def scenario_form(request: Request):
+    defaults = _scenario_defaults()
+    return templates.TemplateResponse(request, "scenario.html", {
+        "bot_choices": BOT_CHOICES,
+        "color_names": COLOR_NAMES,
+        "color_hex": COLOR_HEX,
+        "wall_layout": WALL_LAYOUT,
+        "floor_penalties_text": [-1, -1, -2, -2, -2, -3, -3],
+        "defaults": defaults,
+        "results": None,
+    })
+
+
+@app.post("/scenario")
+async def scenario_submit(request: Request):
+    form = await request.form()
+    bot_name = form.get("bot", "PlannedBot")
+
+    gs = _build_state_from_form(form)
+    bot = BOT_INSTANCES.get(bot_name)
+    if bot is None:
+        bot = BOT_INSTANCES["PlannedBot"]
+        bot_name = "PlannedBot"
+
+    move = bot.choose_move(gs, 0)
+    results = None
+    if move is not None:
+        # Build scored list for the result table
+        moves = get_legal_moves(gs, 0)
+        scored = []
+        for m in moves:
+            ev = evaluate_move(gs, 0, m)
+            scored.append({
+                "move": _explain_move(gs, m),
+                "color": COLOR_NAMES[m.color],
+                "color_hex": COLOR_HEX[m.color],
+                "line": m.line_idx,
+                "S": ev["S"],
+                "P": ev["P"],
+                "R": ev["R"],
+                "C": ev["C"],
+                "K": ev["K"],
+                "completes": ev["completes"],
+                "finishes_game": ev["finishes_game"],
+                "V": ev.get("V", ev["S"] - ev["P"]),
+                "chosen": m == move,
+            })
+        results = {
+            "bot_name": bot_name,
+            "chosen_move": _explain_move(gs, move),
+            "chosen_color": COLOR_NAMES[move.color],
+            "chosen_color_hex": COLOR_HEX[move.color],
+            "chosen_line": move.line_idx,
+            "reason": bot.last_reason,
+            "scored": scored,
+            "num_moves": len(moves),
+        }
+
+    defaults = _state_to_form(gs, bot_name)
+    return templates.TemplateResponse(request, "scenario.html", {
+        "bot_choices": BOT_CHOICES,
+        "color_names": COLOR_NAMES,
+        "color_hex": COLOR_HEX,
+        "wall_layout": WALL_LAYOUT,
+        "floor_penalties_text": [-1, -1, -2, -2, -2, -3, -3],
+        "defaults": defaults,
+        "results": results,
     })
 
 

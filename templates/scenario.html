@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+.scenario-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+@media (max-width:800px) { .scenario-grid { grid-template-columns:1fr; } }
+.scenario-card { background:white; border-radius:10px; padding:1.25rem; box-shadow:0 1px 4px rgba(0,0,0,0.08); margin-bottom:1rem; border-left:4px solid #2d5a3d; }
+.scenario-card h3 { margin-top:0; font-size:1rem; }
+.scenario-card h4 { margin:0.75rem 0 0.4rem; font-size:0.9rem; color:#555; }
+.scenario-card label { font-size:0.85rem; color:#444; display:block; margin:0.25rem 0; }
+.factories-row { display:flex; gap:0.75rem; flex-wrap:wrap; }
+.factory-group { background:#f5f0eb; border-radius:8px; padding:0.5rem; min-width:70px; }
+.factory-group .flabel { font-size:0.7rem; font-weight:600; color:#888; margin-bottom:0.2rem; text-align:center; }
+.factory-tiles { display:flex; gap:2px; flex-wrap:wrap; justify-content:center; }
+.factory-tiles select { width:34px; height:26px; font-size:0.65rem; border:1px solid #ddd; border-radius:4px; background:white; padding:0; text-align:center; }
+.center-checkboxes { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+.center-checkboxes label { display:inline-flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer; }
+.color-label { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid rgba(0,0,0,0.12); }
+.wall-form-grid { display:grid; grid-template-columns:repeat(5, 40px); gap:4px; margin:0.5rem 0; }
+.wall-form-cell { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.wall-swatch { width:30px; height:30px; border-radius:4px; border:1px solid rgba(0,0,0,0.15); }
+.wall-form-cell input { margin:0; cursor:pointer; }
+.pattern-control { display:flex; align-items:center; gap:0.4rem; margin:0.2rem 0; }
+.pattern-control .plabel { font-size:0.75rem; color:#888; width:70px; flex-shrink:0; }
+.pattern-control select { width:80px; font-size:0.8rem; padding:0.15rem; border:1px solid #ddd; border-radius:4px; }
+.pattern-control input[type=number] { width:45px; font-size:0.8rem; padding:0.15rem; border:1px solid #ddd; border-radius:4px; }
+.floor-input { width:100%; font-size:0.8rem; padding:0.3rem; border:1px solid #ddd; border-radius:4px; }
+.help-text { font-size:0.75rem; color:#999; margin-left:0.3rem; }
+.score-input { width:70px; font-size:0.85rem; padding:0.2rem; border:1px solid #ddd; border-radius:4px; }
+.game-state-row { display:flex; gap:1.5rem; align-items:center; flex-wrap:wrap; }
+.game-state-row label { display:inline-flex; align-items:center; gap:0.3rem; font-size:0.85rem; }
+.game-state-row input[type=number] { width:55px; font-size:0.85rem; padding:0.2rem; border:1px solid #ddd; border-radius:4px; }
+.result-header { margin:1.5rem 0 0.5rem; padding:0.75rem 1rem; background:#e8f5e9; border-radius:8px; border-left:4px solid #2d5a3d; }
+.result-header .chosen-move { font-size:1.1rem; font-weight:700; }
+.reason-box { background:#fff8e1; border:1px solid #f0dca0; border-radius:8px; padding:0.6rem 0.8rem; font-size:0.85rem; color:#8B6914; margin:0.5rem 0; }
+.reason-box strong { color:#6d5200; }
+.bot-select { font-size:0.95rem; padding:0.35rem; border:1px solid #ddd; border-radius:4px; min-width:160px; }
+.submit-row { margin-top:1rem; }
+.player-toggle { font-size:0.85rem; color:#2d5a3d; cursor:pointer; font-weight:600; border:none; background:none; padding:0.3rem 0; }
+.player-toggle:hover { text-decoration:underline; }
+</style>
+
+<h1>Scenario Builder</h1>
+<p class="subtitle">Set up a board position and see what each bot would choose</p>
+
+<form method="POST" action="/scenario">
+  <div class="scenario-card">
+    <h3>Bot</h3>
+    <select name="bot" class="bot-select">
+      {% for bot in bot_choices %}
+      <option value="{{ bot }}" {% if defaults.bot == bot %}selected{% endif %}>{{ bot }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="scenario-card">
+    <h3>Factories</h3>
+    <div class="factories-row">
+      {% for fi in range(5) %}
+      <div class="factory-group">
+        <div class="flabel">F{{ fi + 1 }}</div>
+        <div class="factory-tiles">
+          {% for tj in range(4) %}
+          {% set field = "factory_" ~ fi ~ "_" ~ tj %}
+          <select name="{{ field }}">
+            <option value="" {% if defaults.get(field, "") == "" %}selected{% endif %}></option>
+            {% for c in range(5) %}
+            <option value="{{ c }}" {% if defaults.get(field, "") == c|string %}selected{% endif %}>{{ color_names[c] }}</option>
+            {% endfor %}
+          </select>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="scenario-card">
+    <h3>Centre</h3>
+    <div class="center-checkboxes">
+      {% for c in range(5) %}
+      {% set field = "center_c_" ~ c %}
+      <label>
+        <input type="checkbox" name="{{ field }}" {% if defaults.get(field) == "on" %}checked{% endif %}>
+        <span class="color-label" style="background:{{ color_hex[c] }}"></span>
+        {{ color_names[c] }}
+      </label>
+      {% endfor %}
+      <label style="margin-left:0.5rem">
+        <input type="checkbox" name="center_start" {% if defaults.center_start == "on" %}checked{% endif %}>
+        <span class="color-label" style="background:gold;border-color:#b8860b"></span>
+        START
+      </label>
+    </div>
+  </div>
+
+  {% for pi in range(2) %}
+  <div class="scenario-card" id="player-section-{{ pi }}">
+    <h3>Player {{ pi }}</h3>
+
+    <label>Score: <input type="number" name="p{{ pi }}_score" value="{{ defaults.get('p' ~ pi ~ '_score', '0') }}" min="0" class="score-input"></label>
+
+    <h4>Pattern lines</h4>
+    {% for li in range(5) %}
+    {% set color_field = "p" ~ pi ~ "_pl_" ~ li ~ "_color" %}
+    {% set count_field = "p" ~ pi ~ "_pl_" ~ li ~ "_count" %}
+    <div class="pattern-control">
+      <span class="plabel">Line {{ li + 1 }} ({{ li + 1 }})</span>
+      <select name="{{ color_field }}">
+        <option value="" {% if defaults.get(color_field, "") == "" %}selected{% endif %}>—</option>
+        {% for c in range(5) %}
+        <option value="{{ c }}" {% if defaults.get(color_field, "") == c|string %}selected{% endif %}>{{ color_names[c] }}</option>
+        {% endfor %}
+      </select>
+      <input type="number" name="{{ count_field }}" value="{{ defaults.get(count_field, '0') }}" min="0" max="{{ li + 1 }}">
+      <span class="help-text">(0–{{ li + 1 }})</span>
+    </div>
+    {% endfor %}
+
+    <h4>Wall (check = tile placed)</h4>
+    <div class="wall-form-grid">
+      {% for r in range(5) %}
+      {% for c in range(5) %}
+      {% set field = "p" ~ pi ~ "_wall_" ~ r ~ "_" ~ c %}
+      <div class="wall-form-cell">
+        <div class="wall-swatch" style="background:{{ color_hex[wall_layout[r][c]] }};opacity:{% if defaults.get(field) == 'on' %}1{% else %}0.4{% endif %}"></div>
+        <input type="checkbox" name="{{ field }}" {% if defaults.get(field) == "on" %}checked{% endif %}>
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+
+    <h4>Floor line</h4>
+    <input type="text" name="p{{ pi }}_floor" value="{{ defaults.get('p' ~ pi ~ '_floor', '') }}" placeholder="e.g. 0,2,4 or START" class="floor-input">
+    <span class="help-text">Comma-separated values (0=BLUE,1=YELLOW,2=RED,3=BLACK,4=WHITE, or START)</span>
+  </div>
+  {% endfor %}
+
+  <div class="scenario-card">
+    <h3>Game state</h3>
+    <div class="game-state-row">
+      <label>Current player:
+        <select name="current_player">
+          <option value="0" {% if defaults.current_player == "0" %}selected{% endif %}>Player 0</option>
+          <option value="1" {% if defaults.current_player == "1" %}selected{% endif %}>Player 1</option>
+        </select>
+      </label>
+      <label>Round: <input type="number" name="round" value="{{ defaults.get('round', '1') }}" min="1"></label>
+      <label><input type="checkbox" name="taken_from_center_0" {% if defaults.taken_from_center_0 == "on" %}checked{% endif %}> P0 took from centre</label>
+      <label><input type="checkbox" name="taken_from_center_1" {% if defaults.taken_from_center_1 == "on" %}checked{% endif %}> P1 took from centre</label>
+    </div>
+  </div>
+
+  <div class="submit-row">
+    <button type="submit" class="btn btn-primary">Evaluate Scenario</button>
+  </div>
+</form>
+
+{% if results %}
+<hr style="margin:2rem 0">
+
+<h2>Result</h2>
+
+<div class="result-header">
+  <div><strong>{{ results.bot_name }}</strong> chose:</div>
+  <div class="chosen-move">
+    <span class="tile-dot sm" style="background:{{ results.chosen_color_hex }};display:inline-block;vertical-align:middle;margin-right:6px;border:1px solid rgba(0,0,0,0.12)"></span>
+    {{ results.chosen_move }}
+  </div>
+  {% if results.reason %}
+  <div class="reason-box"><strong>Reasoning:</strong> {{ results.reason }}</div>
+  {% endif %}
+  <div style="font-size:0.85rem;color:#666;margin-top:0.3rem">{{ results.num_moves }} legal move(s) evaluated</div>
+</div>
+
+<h3>All legal moves</h3>
+<table class="move-table">
+  <thead>
+    <tr>
+      <th style="width:28%">Move</th>
+      <th>S</th>
+      <th>P</th>
+      <th>R</th>
+      <th>C</th>
+      <th>K</th>
+      <th>V</th>
+      <th>Completes</th>
+      <th>Finishes</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in results.scored | sort(attribute='V', reverse=True) %}
+    <tr class="{% if m.chosen %}top{% endif %}{% if m.finishes_game and not m.chosen %} finishes{% endif %}">
+      <td><span class="tile-dot sm" style="background:{{ m.color_hex }};display:inline-block;vertical-align:middle;margin-right:4px"></span>{{ m.move }}</td>
+      <td>{{ m.S }}</td>
+      <td>{{ m.P }}</td>
+      <td>{{ m.R }}</td>
+      <td>{{ m.C }}</td>
+      <td>{{ m.K }}</td>
+      <td><strong>{{ m.V }}</strong></td>
+      <td>{% if m.completes %}<span class="yes-badge">Y</span>{% else %}<span class="no-badge">N</span>{% endif %}</td>
+      <td>{% if m.finishes_game %}<span style="color:#c44;font-weight:600">⚠ Y</span>{% else %}<span class="no-badge">N</span>{% endif %}</td>
+      <td>{% if m.chosen %}<span class="chosen-badge">chosen</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endblock %}
