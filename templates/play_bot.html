@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Play vs Bot</h1>
+<form method="post" action="/play/bot/new/" class="form">
+    {% csrf_token %}
+    <p>Playing as <strong>{{ user.username }}</strong>.</p>
+    <div class="form-group">
+        <label>Choose Bot</label>
+        <select name="bot_name" required>
+            {% for b in bot_choices %}
+            <option value="{{ b }}">{{ b }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label>Seed (optional, for reproducible games)</label>
+        <input type="number" name="seed" placeholder="Leave empty for random">
+    </div>
+    <button type="submit" class="btn btn-primary">Start Game</button>
+</form>
+<p><a href="/play/">← Back</a></p>
+{% endblock %}

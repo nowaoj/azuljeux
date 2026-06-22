@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+
+
+<h1>All Simulations</h1>
+
+{% if simulations %}
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Bot 1</th>
+            <th>Bot 2</th>
+            <th>Games</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for sim in simulations %}
+        <tr>
+            <td>{{ sim.id }}</td>
+            <td>{{ sim.bot1_name }}</td>
+            <td>{{ sim.bot2_name }}</td>
+            <td>{{ sim.games_completed }} / {{ sim.num_games }}</td>
+            <td><span class="tag tag-{{ sim.status }}">{{ sim.status }}</span></td>
+            <td>{{ sim.created_at|date:"Y-m-d H:i" }}</td>
+            <td>
+                <a href="/simulations/{{ sim.id }}" class="btn btn-sm">View Results</a>
+                <form method="POST" action="/simulations/{{ sim.id }}/delete/" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete simulation #{{ sim.id }} and all its games?')">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">No simulations yet. <a href="/run">Run your first simulation</a>.</p>
+{% endif %}
+
+{% endblock %}

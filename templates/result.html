@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+.sortable th { cursor:pointer; user-select:none; }
+.sortable th:hover { background:#1e4a2e; }
+.sortable th::after { content:" \25B4\25BE"; font-size:0.6rem; opacity:0.4; }
+.sortable th.sorted-asc::after { content:" \25B4"; opacity:1; }
+.sortable th.sorted-desc::after { content:" \25BE"; opacity:1; }
+.progress-bar { background:#e9ecef; border-radius:4px; height:20px; overflow:hidden; margin:0.5rem 0; }
+.progress-bar-fill { background:#2d5a3d; height:100%; transition:width 0.5s; display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; font-weight:600; }
+</style>
+
+<h1>Simulation #{{ sim.id }}
+    <form method="POST" action="/simulations/{{ sim.id }}/delete/" style="display:inline;margin-left:0.5rem;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this simulation and all its games?')">Delete</button>
+    </form>
+</h1>
+<p class="subtitle">
+    {{ sim.bot1_name }} vs {{ sim.bot2_name }}
+    &mdash; <span id="games-count">{{ total }}</span> / {{ num_games }} games
+    {% if sim.hundred_point_rule %}&mdash; <span class="tag" style="background:#c39;color:#fff;">Race to 100</span>{% endif %}
+    <span id="status-badge" style="margin-left:0.5rem;">
+        {% if sim_status == 'running' %}
+        <span class="tag" style="background:#ffc107;color:#333;">Running&hellip;</span>
+        {% elif sim_status == 'done' %}
+        <span class="tag" style="background:#2d5a3d;color:#fff;">Done</span>
+        {% elif sim_status == 'failed' %}
+        <span class="tag" style="background:#c44;color:#fff;">Failed</span>
+        {% else %}
+        <span class="tag" style="background:#888;color:#fff;">{{ sim_status }}</span>
+        {% endif %}
+    </span>
+</p>
+
+<div class="progress-bar">
+    <div class="progress-bar-fill" id="progress-fill"
+         style="width:{% if num_games > 0 %}{% widthratio total num_games 100 %}{% else %}0{% endif %}%;">
+        {% if total > 0 %}{% widthratio total num_games 100 %}%{% endif %}
+    </div>
+</div>
+
+<div class="stats-grid" id="stats-grid">
+    <div class="stat-card" id="stat-bot1">
+        <span class="stat-label">{{ sim.bot1_name }}</span>
+        <span class="stat-value" id="stat-wins1">{{ wins1 }}</span>
+        <span class="stat-label" id="stat-wr1">{{ winrate1 }}% win rate</span>
+    </div>
+    <div class="stat-card" id="stat-bot2">
+        <span class="stat-label">{{ sim.bot2_name }}</span>
+        <span class="stat-value" id="stat-wins2">{{ wins2 }}</span>
+        <span class="stat-label" id="stat-wr2">{{ winrate2 }}% win rate</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Draws</span>
+        <span class="stat-value" id="stat-draws">{{ draws }}</span>
+        <span class="stat-label" id="stat-dr">{{ drawrate }}%</span>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <span class="stat-label">Avg score &mdash; {{ sim.bot1_name }}</span>
+        <span class="stat-value" id="stat-mean1">{{ mean1 }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Avg score &mdash; {{ sim.bot2_name }}</span>
+        <span class="stat-value" id="stat-mean2">{{ mean2 }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Avg rounds per game</span>
+        <span class="stat-value">{{ mean_rounds }}</span>
+    </div>
+</div>
+
+<div class="stats-grid" style="margin-top:0.5rem">
+    <div class="stat-card" style="font-size:0.82rem">
+        <span class="stat-label">{{ sim.bot1_name }} &mdash; Avg rows/cols/colors</span>
+        <span class="stat-value" style="font-size:0.9rem">{{ mean_rows1 }} / {{ mean_cols1 }} / {{ mean_colors1 }}</span>
+        <span class="stat-label">Avg floor penalty: {{ mean_fp1 }}</span>
+    </div>
+    <div class="stat-card" style="font-size:0.82rem">
+        <span class="stat-label">{{ sim.bot2_name }} &mdash; Avg rows/cols/colors</span>
+        <span class="stat-value" style="font-size:0.9rem">{{ mean_rows2 }} / {{ mean_cols2 }} / {{ mean_colors2 }}</span>
+        <span class="stat-label">Avg floor penalty: {{ mean_fp2 }}</span>
+    </div>
+</div>
+
+<div class="section" id="histogram-section">
+    <h2>Score Distribution</h2>
+    <div id="histogram-content">
+        {% if hist_bars %}
+        <div class="histogram">
+            {% for bar in hist_bars %}
+            <div class="hist-bar-wrapper">
+                <div class="hist-label">{{ bar.label }}</div>
+                <div class="hist-bar" style="width: {{ bar.pct }}%"></div>
+                <div class="hist-count">{{ bar.count }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No data.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section">
+    <h2>Game Results</h2>
+    <table class="table sortable" id="games-table">
+        <thead>
+            <tr>
+                <th data-col="idx">#</th>
+                <th data-col="score1">{{ sim.bot1_name }}</th>
+                <th data-col="score2">{{ sim.bot2_name }}</th>
+                <th data-col="winner">Winner</th>
+                <th data-col="rounds">Rds</th>
+                <th data-col="turns">Turns</th>
+                <th data-col="r1" title="Completed rows">R1</th>
+                <th data-col="c1" title="Completed columns">C1</th>
+                <th data-col="k1" title="Completed colors">K1</th>
+                <th data-col="fp1" title="Floor penalty total">FP1</th>
+                <th data-col="r2" title="Completed rows">R2</th>
+                <th data-col="c2" title="Completed columns">C2</th>
+                <th data-col="k2" title="Completed colors">K2</th>
+                <th data-col="fp2" title="Floor penalty total">FP2</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for g in games %}
+            <tr>
+                <td class="col-idx">{{ g.game_index }}</td>
+                <td class="col-score1">{{ g.score1 }}</td>
+                <td class="col-score2">{{ g.score2 }}</td>
+                <td class="col-winner">
+                    {% if g.winner == 0 %}
+                    <span class="tag tag-bot1">{{ sim.bot1_name }}</span>
+                    {% elif g.winner == 1 %}
+                    <span class="tag tag-bot2">{{ sim.bot2_name }}</span>
+                    {% else %}
+                    <span class="tag tag-draw">Draw</span>
+                    {% endif %}
+                </td>
+                <td class="col-rounds">{{ g.rounds }}</td>
+                <td class="col-turns">{{ g.total_turns }}</td>
+                <td class="col-r1">{{ g.rows1 }}</td>
+                <td class="col-c1">{{ g.cols1 }}</td>
+                <td class="col-k1">{{ g.colors1 }}</td>
+                <td class="col-fp1">{{ g.floor_penalty_p1 }}</td>
+                <td class="col-r2">{{ g.rows2 }}</td>
+                <td class="col-c2">{{ g.cols2 }}</td>
+                <td class="col-k2">{{ g.colors2 }}</td>
+                <td class="col-fp2">{{ g.floor_penalty_p2 }}</td>
+                <td>
+                    <a href="/game/{{ g.id }}/replay" class="btn btn-sm">Replay</a>
+                    <form method="POST" action="/game/{{ g.id }}/delete/" style="display:inline" onsubmit="return confirm('Delete this game?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-danger">X</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+const BOT1_NAME = "{{ sim.bot1_name }}";
+const BOT2_NAME = "{{ sim.bot2_name }}";
+const SIM_ID = {{ sim.id }};
+const SIM_STATUS = "{{ sim_status }}";
+
+{% autoescape off %}
+const CSRF_TOKEN = "{{ csrf_token }}";
+{% endautoescape %}
+
+function renderGameRow(g) {
+    var winnerHtml;
+    if (g.winner === 0) winnerHtml = '<span class="tag tag-bot1">' + BOT1_NAME + '</span>';
+    else if (g.winner === 1) winnerHtml = '<span class="tag tag-bot2">' + BOT2_NAME + '</span>';
+    else winnerHtml = '<span class="tag tag-draw">Draw</span>';
+
+    return '<tr>'
+        + '<td class="col-idx">' + g.game_index + '</td>'
+        + '<td class="col-score1">' + g.score1 + '</td>'
+        + '<td class="col-score2">' + g.score2 + '</td>'
+        + '<td class="col-winner">' + winnerHtml + '</td>'
+        + '<td class="col-rounds">' + g.rounds + '</td>'
+        + '<td class="col-turns">' + g.total_turns + '</td>'
+        + '<td class="col-r1">' + g.rows1 + '</td>'
+        + '<td class="col-c1">' + g.cols1 + '</td>'
+        + '<td class="col-k1">' + g.colors1 + '</td>'
+        + '<td class="col-fp1">' + g.floor_penalty_p1 + '</td>'
+        + '<td class="col-r2">' + g.rows2 + '</td>'
+        + '<td class="col-c2">' + g.cols2 + '</td>'
+        + '<td class="col-k2">' + g.colors2 + '</td>'
+        + '<td class="col-fp2">' + g.floor_penalty_p2 + '</td>'
+        + '<td>'
+        + '<a href="/game/' + g.id + '/replay" class="btn btn-sm">Replay</a>'
+        + '<form method="POST" action="/game/' + g.id + '/delete/" style="display:inline" onsubmit="return confirm(\'Delete this game?\')">'
+        + '<input type="hidden" name="csrfmiddlewaretoken" value="' + CSRF_TOKEN + '">'
+        + '<button type="submit" class="btn btn-sm btn-danger">X</button></form>'
+        + '</td>'
+        + '</tr>';
+}
+
+function renderTable(games) {
+    var tbody = document.querySelector("#games-table tbody");
+    var html = '';
+    for (var i = 0; i < games.length; i++) {
+        html += renderGameRow(games[i]);
+    }
+    tbody.innerHTML = html;
+}
+
+function renderHistogram(scores) {
+    var container = document.getElementById('histogram-content');
+    if (!scores || scores.length === 0) {
+        container.innerHTML = '<p class="empty">No data.</p>';
+        return;
+    }
+    var buckets = {};
+    for (var i = 0; i < scores.length; i++) {
+        var bucket = Math.floor(scores[i] / 10) * 10;
+        buckets[bucket] = (buckets[bucket] || 0) + 1;
+    }
+    var keys = Object.keys(buckets).map(function(k) { return parseInt(k); }).sort(function(a,b) { return a - b; });
+    var maxCount = 0;
+    for (var j = 0; j < keys.length; j++) {
+        if (buckets[keys[j]] > maxCount) maxCount = buckets[keys[j]];
+    }
+    var html = '<div class="histogram">';
+    for (var k = 0; k < keys.length; k++) {
+        var bucket = keys[k];
+        var count = buckets[bucket];
+        var pct = maxCount > 0 ? Math.round(count / maxCount * 100) : 0;
+        html += '<div class="hist-bar-wrapper">'
+            + '<div class="hist-label">' + bucket + '-' + (bucket + 9) + '</div>'
+            + '<div class="hist-bar" style="width:' + pct + '%"></div>'
+            + '<div class="hist-count">' + count + '</div>'
+            + '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function attachSort() {
+    var table = document.getElementById("games-table");
+    var tbody = table.querySelector("tbody");
+    var rows = Array.from(tbody.querySelectorAll("tr"));
+
+    var sortKey = {
+        idx:    function(r) { return parseInt(r.querySelector(".col-idx").textContent); },
+        score1: function(r) { return parseInt(r.querySelector(".col-score1").textContent); },
+        score2: function(r) { return parseInt(r.querySelector(".col-score2").textContent); },
+        winner: function(r) {
+            var w = r.querySelector(".col-winner .tag");
+            return w ? w.textContent.trim() : "";
+        },
+        rounds: function(r) { return parseInt(r.querySelector(".col-rounds").textContent); },
+        turns:  function(r) { return parseInt(r.querySelector(".col-turns").textContent); },
+        r1:  function(r) { return parseInt(r.querySelector(".col-r1").textContent); },
+        c1:  function(r) { return parseInt(r.querySelector(".col-c1").textContent); },
+        k1:  function(r) { return parseInt(r.querySelector(".col-k1").textContent); },
+        fp1: function(r) { return parseInt(r.querySelector(".col-fp1").textContent); },
+        r2:  function(r) { return parseInt(r.querySelector(".col-r2").textContent); },
+        c2:  function(r) { return parseInt(r.querySelector(".col-c2").textContent); },
+        k2:  function(r) { return parseInt(r.querySelector(".col-k2").textContent); },
+        fp2: function(r) { return parseInt(r.querySelector(".col-fp2").textContent); },
+    };
+
+    var currentCol = null;
+    var currentDir = 1;
+
+    function updateRows() {
+        rows.sort(function(a, b) {
+            var va = sortKey[currentCol](a), vb = sortKey[currentCol](b);
+            if (typeof va === "string") return currentDir * va.localeCompare(vb);
+            return currentDir * (va - vb);
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+    }
+
+    table.querySelectorAll("th[data-col]").forEach(function(th) {
+        th.addEventListener("click", function() {
+            var col = th.getAttribute("data-col");
+            if (currentCol === col) {
+                currentDir = -currentDir;
+            } else {
+                if (currentCol) {
+                    table.querySelector("th[data-col='" + currentCol + "']").classList.remove("sorted-asc", "sorted-desc");
+                }
+                currentCol = col;
+                currentDir = 1;
+            }
+            th.classList.remove("sorted-asc", "sorted-desc");
+            th.classList.add(currentDir === 1 ? "sorted-asc" : "sorted-desc");
+            rows = Array.from(tbody.querySelectorAll("tr"));
+            updateRows();
+        });
+    });
+}
+
+function updatePage(data) {
+    document.getElementById('games-count').textContent = data.games_completed;
+    document.getElementById('stat-wins1').textContent = data.wins1;
+    document.getElementById('stat-wins2').textContent = data.wins2;
+    document.getElementById('stat-draws').textContent = data.draws;
+    document.getElementById('stat-wr1').textContent = data.winrate1 + '% win rate';
+    document.getElementById('stat-wr2').textContent = data.winrate2 + '% win rate';
+    document.getElementById('stat-dr').textContent = data.drawrate + '%';
+    document.getElementById('stat-mean1').textContent = data.mean1;
+    document.getElementById('stat-mean2').textContent = data.mean2;
+
+    var pct = data.num_games > 0 ? (data.games_completed / data.num_games * 100) : 0;
+    var fill = document.getElementById('progress-fill');
+    if (fill) {
+        fill.style.width = pct + '%';
+        fill.textContent = (pct > 5 ? Math.round(pct) + '%' : '');
+    }
+
+    if (data.games) {
+        renderTable(data.games);
+        var allScores = [];
+        for (var i = 0; i < data.games.length; i++) {
+            allScores.push(data.games[i].score1);
+            allScores.push(data.games[i].score2);
+        }
+        renderHistogram(allScores);
+    }
+
+    if (data.status !== 'running' && data.status !== 'pending') {
+        var badge = data.status === 'done'
+            ? '<span class="tag" style="background:#2d5a3d;color:#fff;">Done</span>'
+            : '<span class="tag" style="background:#c44;color:#fff;">' + data.status + '</span>';
+        document.getElementById('status-badge').innerHTML = badge;
+        return false;
+    }
+    return true;
+}
+
+(function poll() {
+    fetch('/simulations/' + SIM_ID + '/progress/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var keepPolling = updatePage(data);
+            if (keepPolling) setTimeout(poll, 2000);
+        })
+        .catch(function() {
+            setTimeout(poll, 3000);
+        });
+})();
+
+attachSort();
+</script>
+
+{% endblock %}

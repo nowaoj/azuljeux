@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% load azul_extras %}
+{% block content %}
+
+<style>
+.scenario-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-top:1rem; }
+.form-section { background:#f8f6f2; border-radius:8px; padding:1rem; margin-bottom:1rem; }
+.form-section h3 { margin-top:0; font-size:0.95rem; }
+.form-group { margin-bottom:0.75rem; }
+.form-group label { display:block; font-weight:600; font-size:0.85rem; margin-bottom:0.25rem; color:#444; }
+.form-group select, .form-group input[type="number"] { padding:0.3rem 0.5rem; border:1px solid #ccc; border-radius:6px; font-size:0.82rem; width:auto; }
+.form-group textarea { width:100%; padding:0.4rem 0.6rem; border:1px solid #ccc; border-radius:6px; font-family:monospace; font-size:0.78rem; min-height:200px; box-sizing:border-box; }
+.submit-row { margin-top:1rem; }
+.eval-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.eval-table th { background:#2d5a3d; color:#fff; padding:0.3rem 0.4rem; text-align:center; font-size:0.72rem; text-transform:uppercase; white-space:nowrap; }
+.eval-table th:first-child { text-align:left; }
+.eval-table td { padding:0.25rem 0.4rem; text-align:center; border-bottom:1px solid #f0eee8; }
+.eval-table td:first-child { text-align:left; font-size:0.78rem; }
+.eval-table tr.chosen { background:#d4edda; font-weight:600; }
+.eval-table tr.chosen td { border-bottom-color:#b7dfb9; }
+.chosen-badge { background:#2d5a3d; color:#fff; padding:0.1rem 0.4rem; border-radius:4px; font-size:0.7rem; font-weight:600; }
+.reason-box { background:#fff8e1; border:1px solid #f0dca0; border-radius:8px; padding:0.6rem 0.8rem; font-size:0.85rem; color:#8B6914; margin-top:1rem; }
+.reason-box strong { color:#6d5200; }
+.result-state { background:#f0f4f0; border:1px solid #d0dcd0; border-radius:8px; padding:0.8rem; margin-top:1rem; font-size:0.82rem; }
+.result-state h4 { margin:0 0 0.5rem; font-size:0.9rem; }
+.checkbox-group { display:flex; align-items:center; gap:0.5rem; }
+.checkbox-group input[type="checkbox"] { width:18px; height:18px; }
+.checkbox-group label { margin-bottom:0; }
+.error-box { background:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; padding:0.6rem 0.8rem; color:#721c24; margin-bottom:1rem; font-size:0.85rem; }
+.game-settings { display:flex; flex-wrap:wrap; gap:1rem; align-items:center; }
+.game-settings .form-group { margin-bottom:0; }
+.tab-bar { display:flex; gap:0; margin-bottom:0; }
+.tab-bar button { padding:0.4rem 1rem; border:1px solid #ccc; background:#f0eee8; cursor:pointer; font-size:0.82rem; border-radius:0; }
+.tab-bar button:first-child { border-radius:6px 0 0 6px; }
+.tab-bar button:last-child { border-radius:0 6px 6px 0; }
+.tab-bar button.active { background:#2d5a3d; color:#fff; border-color:#2d5a3d; }
+.factory-tile, .center-tile, .pattern-tile, .floor-tile { cursor:pointer; border:1px solid rgba(0,0,0,0.15); background:#e8e8e8; }
+.wall-tile { cursor:pointer; }
+.wall-cell { cursor:pointer; }
+.center-tiles label { cursor:pointer; }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+.toggle-wrap { display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+.toggle-wrap input { display:none; }
+.toggle-track { position:relative; width:40px; height:22px; background:#ccc; border-radius:11px; transition:background 0.2s; flex-shrink:0; }
+.toggle-track::after { content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; background:#fff; border-radius:50%; transition:transform 0.2s; }
+.toggle-wrap input:checked + .toggle-track { background:#2d5a3d; }
+.toggle-wrap input:checked + .toggle-track::after { transform:translateX(18px); }
+.toggle-label { font-size:0.85rem; font-weight:600; color:#444; }
+</style>
+
+<h1>Scenario Builder</h1>
+<p class="subtitle">Design a custom Azul board position, then run any bot against it and see exactly which move it picks and why.</p>
+
+{% if error %}
+<div class="error-box">{{ error }}</div>
+{% endif %}
+
+<div class="scenario-grid">
+    <div class="scenario-form-col">
+        <form method="POST" action="/scenario/run/" id="scenario-form">
+            {% csrf_token %}
+            <input type="hidden" name="use_visual_builder" id="use_visual_builder" value="1">
+
+            <div class="form-section">
+                <h3>Bot &amp; Settings</h3>
+                <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="bot_name">Bot</label>
+                        <select name="bot_name" id="bot_name">
+                            {% for b in bot_choices %}
+                            <option value="{{ b }}" {% if result and result.bot_name == b %}selected{% endif %}>{{ b }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="player_idx">Player to move</label>
+                        <select name="player_idx" id="player_idx">
+                            <option value="0" {% if result and result.player_idx == 0 %}selected{% endif %}>Player 0</option>
+                            <option value="1" {% if result and result.player_idx == 1 %}selected{% endif %}>Player 1</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label class="toggle-wrap">
+                            <input type="checkbox" name="hundred_point" id="hundred_point" {% if result and result.hundred_point %}checked{% endif %}>
+                            <span class="toggle-track"></span>
+                            <span class="toggle-label">Race to 100</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Factories &amp; Center</h3>
+                <div class="factories-wrap">
+                    {% for fi in "01234"|make_list %}
+                    {% with fi_i=forloop.counter0 %}
+                    <div class="factory">
+                        <div class="factory-label">F{{ fi_i|add:1 }}</div>
+                        <div class="factory-tiles">
+                            {% for ti in "0123"|make_list %}
+                            {% with ti_i=forloop.counter0 %}
+                            <input type="hidden" name="factory_{{ fi_i }}_{{ ti_i }}" id="f_{{ fi_i }}_{{ ti_i }}" value="">
+                            <span class="tile sm factory-tile" id="fv_f_{{ fi_i }}_{{ ti_i }}" onclick="cycleTile(this)"></span>
+                            {% endwith %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+
+                <div class="center-wrap" style="margin-top:0.5rem;">
+                    <span class="center-label">C:</span>
+                    <div class="center-tiles">
+                        <label style="display:inline-flex;align-items:center;gap:2px;margin-right:4px;cursor:pointer;font-size:0.78rem;">
+                            <input type="checkbox" name="center_start" id="center_start" onchange="toggleCenterStart(this)">
+                            <span class="tile sm start-tile" id="center_start_tile" style="opacity:0.3;">&#9733;</span> START
+                        </label>
+                        {% for ti in "0123456789"|make_list %}
+                        {% with ti_i=forloop.counter0 %}
+                        <input type="hidden" name="center_{{ ti_i }}" id="c_{{ ti_i }}" value="">
+                        <span class="tile sm center-tile" id="fv_c_{{ ti_i }}" onclick="cycleTile(this)"></span>
+                        {% endwith %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Player Boards</h3>
+                <div class="tab-bar">
+                    <button type="button" class="active" onclick="switchPlayerTab(0)">Player 0</button>
+                    <button type="button" onclick="switchPlayerTab(1)">Player 1</button>
+                </div>
+
+                {% for p in "01"|make_list %}
+                {% with pfx="p"|add:p pidx=forloop.counter0 %}
+                <div class="tab-content {% if pidx == 0 %}active{% endif %}" id="player-tab-{{ pidx }}">
+                <div class="player-board">
+
+                <h4>Player {{ pidx }}</h4>
+
+                <div class="board-grid">
+                    <div>
+                        <div class="board-section-label">Pattern Lines</div>
+                        {% for r in "01234"|make_list %}
+                        {% with ri=forloop.counter0 %}
+                        <div class="pattern-line">
+                            <span class="line-label">L{{ ri|add:1 }}:</span>
+                            {% for t in "01234"|make_list %}
+                            {% with ti=forloop.counter0 %}
+                            {% if ti <= ri %}
+                            <input type="hidden" name="{{ pfx }}_pattern_{{ ri }}_{{ ti }}" id="{{ pfx }}_pl_{{ ri }}_{{ ti }}" value="">
+                            <span class="tile sm pattern-tile" id="fv_{{ pfx }}_pl_{{ ri }}_{{ ti }}" onclick="cycleTile(this)"></span>
+                            {% else %}
+                            <span class="tile sm empty"></span>
+                            {% endif %}
+                            {% endwith %}
+                            {% endfor %}
+                        </div>
+                        {% endwith %}
+                        {% endfor %}
+                    </div>
+
+                    <div>
+                        <div class="board-section-label">Wall</div>
+                        <div style="display:grid;grid-template-columns:repeat(5,28px) 20px;gap:2px;">
+                            {% for r in "01234"|make_list %}
+                            {% with ri=forloop.counter0 %}
+                            {% for c in "01234"|make_list %}
+                            {% with ci=forloop.counter0 %}
+                            {% with row=wall_layout|index:ri cell=row|index:ci %}
+                            <div class="wall-cell" id="wc_{{ pfx }}_{{ ri }}_{{ ci }}" style="background:{{ cell.hex }};{% if cell.hex == '#DDDDDD' %}border-color:#aaa;{% endif %}">
+                                <input type="hidden" name="{{ pfx }}_wall_{{ ri }}_{{ ci }}" id="{{ pfx }}_wall_{{ ri }}_{{ ci }}" value="">
+                                <span class="tile sm wall-tile" id="fv_{{ pfx }}_wall_{{ ri }}_{{ ci }}" onclick="toggleWallTile(this,'{{ pfx }}','{{ ri }}','{{ ci }}')" style="display:none;"></span>
+                            </div>
+                            {% endwith %}
+                            {% endwith %}
+                            {% endfor %}
+                            <div style="display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#888;">·</div>
+                            {% endwith %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="floor-group" style="margin-top:0.3rem;">
+                    <div class="board-section-label">Floor</div>
+                    <div class="floor-line">
+                        {% for t in "0123456"|make_list %}
+                        {% with ti=forloop.counter0 %}
+                        <div style="display:flex;flex-direction:column;align-items:center;">
+                            <input type="hidden" name="{{ pfx }}_floor_{{ ti }}" id="{{ pfx }}_fl_{{ ti }}" value="">
+                            <span class="tile sm floor-tile" id="fv_{{ pfx }}_fl_{{ ti }}" onclick="cycleTile(this)"></span>
+                            <span class="floor-penalty">{{ floor_penalties|index:ti }}</span>
+                        </div>
+                        {% endwith %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="board-section-label" style="margin-top:0.4rem;">Score</div>
+                <input type="number" name="{{ pfx }}_score" value="0" min="0" style="width:80px;padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:6px;font-size:0.82rem;">
+
+                </div>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            </div>
+
+            <div class="form-section">
+                <h3>Game State</h3>
+                <div class="game-settings">
+                    <div class="form-group">
+                        <label for="current_player">Current player</label>
+                        <select name="current_player" id="current_player">
+                            <option value="0">Player 0</option>
+                            <option value="1">Player 1</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="starting_player">Starting player</label>
+                        <select name="starting_player" id="starting_player">
+                            <option value="0">Player 0</option>
+                            <option value="1">Player 1</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="phase">Phase</label>
+                        <select name="phase" id="phase">
+                            <option value="factory_offer">factory_offer</option>
+                            <option value="wall_tiling">wall_tiling</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="round">Round</label>
+                        <input type="number" name="round" id="round" value="1" min="1" style="width:60px;">
+                    </div>
+                    <div class="form-group checkbox-group" style="margin-bottom:0;">
+                        <input type="checkbox" name="game_over" id="game_over">
+                        <label for="game_over">Game over</label>
+                    </div>
+                    <div class="form-group">
+                        <label for="winner">Winner</label>
+                        <select name="winner" id="winner">
+                            <option value="-1">None</option>
+                            <option value="0">Player 0</option>
+                            <option value="1">Player 1</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>JSON (advanced / fallback)</h3>
+                <div>
+                    <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:0.82rem;">
+                        <input type="checkbox" id="toggle-json" onchange="document.getElementById('json-area').style.display=this.checked?'block':'none'">
+                        Show JSON editor
+                    </label>
+                    <div id="json-area" style="display:none;margin-top:6px;">
+                        <div class="form-group">
+                            <textarea name="state_json" id="state_json" spellcheck="false">{{ default_state }}</textarea>
+                            <div class="hint" style="font-size:0.78rem;color:#888;margin-top:0.2rem;">
+                                When JSON is non-empty and visual builder is hidden, JSON is used.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:6px;font-size:0.78rem;color:#888;">
+                    <a href="#" onclick="copyStateJson();return false">Copy state JSON to clipboard</a>
+                    &middot;
+                    <a href="#" onclick="loadExample();return false">Load example state</a>
+                </div>
+            </div>
+
+            <div class="submit-row">
+                <button type="submit" class="btn">Run Bot</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="scenario-result-col">
+        {% if result %}
+        <h2 style="margin-top:0">Results</h2>
+
+        <div class="reason-box">
+            <strong>{{ result.bot_name }}</strong> chose a move for <strong>Player {{ result.player_idx }}</strong>
+            (scores: P0={{ result.score_p1_before }}, P1={{ result.score_p2_before }})
+            {% if result.hundred_point %}&mdash; <strong>Race to 100</strong>{% endif %}
+            <br><br>
+            <strong>Decision:</strong> {{ result.bot_reason }}
+        </div>
+
+        <h3 style="margin-top:1rem">All Legal Moves ({{ result.move_count }})</h3>
+        <table class="eval-table">
+            <thead>
+                <tr>
+                    <th>Move</th>
+                    <th>S</th>
+                    <th>P</th>
+                    <th>R</th>
+                    <th>C</th>
+                    <th>K</th>
+                    <th>V</th>
+                    <th>Completes</th>
+                    <th>Finishes</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in result.evaluations %}
+                <tr class="{% if e.chosen %}chosen{% endif %}">
+                    <td>
+                        <span class="tile-dot sm" style="display:inline-block;vertical-align:middle;margin-right:4px;width:12px;height:12px;border-radius:3px;background:{{ e.color_hex }}"></span>
+                        Take {{ e.taken }}&times; {{ e.color_name }} from
+                        {% if e.source_type == "factory" %}F{{ e.source_idx|add:1 }}{% else %}center{% endif %}
+                        &rarr; {% if e.line_idx >= 0 %}line {{ e.line_idx|add:1 }}{% else %}floor{% endif %}
+                    </td>
+                    <td>{{ e.S }}</td>
+                    <td>{{ e.P }}</td>
+                    <td>{{ e.R }}%</td>
+                    <td>{{ e.C }}%</td>
+                    <td>{{ e.K }}%</td>
+                    <td><strong>{{ e.V }}</strong></td>
+                    <td>{% if e.completes %}<span style="color:#2d5a3d;font-weight:600">Y</span>{% else %}N{% endif %}</td>
+                    <td>{% if e.finishes_game %}<span style="color:#c44;font-weight:600">&#9888;</span>{% else %}N{% endif %}</td>
+                    <td>{% if e.chosen %}<span class="chosen-badge">chosen</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if result.result_state %}
+        <div class="result-state">
+            <h4>State after chosen move</h4>
+            <pre style="font-size:0.72rem;max-height:300px;overflow:auto;background:#fff;padding:0.5rem;border-radius:4px;">{{ result.result_state|pprint }}</pre>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div style="background:#f8f6f2;border-radius:8px;padding:2rem;text-align:center;color:#888;">
+            <p style="font-size:1.1rem;font-weight:600;color:#555">Configure &amp; Run</p>
+            <p>Use the visual board builder on the left to set up factories, center, pattern lines, wall, and floor tiles. Then click <strong>Run Bot</strong>.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+var TILE_COLORS = ['', '#0066CC', '#FFCC00', '#CC3333', '#444444', '#DDDDDD'];
+var TILE_VALUES = ['', '0', '1', '2', '3', '4'];
+
+function tileIdToInputId(tileId) {
+    return tileId.replace('fv_', '');
+}
+
+function cycleTile(el) {
+    var inputId = tileIdToInputId(el.id);
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var cur = input.value;
+    var idx = TILE_VALUES.indexOf(cur);
+    if (idx < 0) idx = 0;
+    var next = (idx + 1) % TILE_VALUES.length;
+    input.value = TILE_VALUES[next];
+    if (next === 0) {
+        el.style.background = '';
+        el.className = 'tile sm';
+    } else {
+        el.style.background = TILE_COLORS[next];
+        el.className = 'tile sm';
+    }
+}
+
+function toggleWallTile(el, pfx, ri, ci) {
+    var input = document.getElementById(pfx + '_wall_' + ri + '_' + ci);
+    if (!input) return;
+    if (input.value) {
+        input.value = '';
+        el.style.display = 'none';
+    } else {
+        input.value = '1';
+        el.style.display = 'inline-block';
+    }
+}
+
+function toggleCenterStart(cb) {
+    var tile = document.getElementById('center_start_tile');
+    tile.style.opacity = cb.checked ? '1' : '0.3';
+}
+
+function switchPlayerTab(idx) {
+    document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.tab-bar button').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('player-tab-' + idx).classList.add('active');
+    document.querySelectorAll('.tab-bar button')[idx].classList.add('active');
+}
+
+function loadExample() {
+    document.getElementById('use_visual_builder').value = '0';
+    document.getElementById('state_json').value = {{ default_state|safe }};
+    document.getElementById('toggle-json').checked = true;
+    document.getElementById('json-area').style.display = 'block';
+    return false;
+}
+
+function copyStateJson() {
+    var area = document.getElementById('state_json');
+    area.style.display = 'block';
+    area.select();
+    document.execCommand('copy');
+}
+</script>
+
+{% endblock %}

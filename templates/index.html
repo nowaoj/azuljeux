@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+
+
+<h1>Azul Game Analysis</h1>
+<p class="subtitle">Statistical analysis of Azul bot strategies &mdash; IB DP Math IA</p>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <span class="stat-value">{{ stats.total_simulations }}</span>
+        <span class="stat-label">Simulations</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ stats.total_games }}</span>
+        <span class="stat-label">Games Played</span>
+    </div>
+    {% if stats.total_player_games and stats.total_player_games > 0 %}
+    <div class="stat-card">
+        <span class="stat-value">{{ stats.total_player_games }}</span>
+        <span class="stat-label">Player Games</span>
+    </div>
+    {% endif %}
+    {% if stats.top_matchup %}
+    <div class="stat-card wide">
+        <span class="stat-label">Most played matchup</span>
+        <span class="stat-value small">{{ stats.top_matchup.bot1_name }} vs {{ stats.top_matchup.bot2_name }}</span>
+        <span class="stat-label">({{ stats.top_matchup.cnt }} runs)</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h2>Quick Actions</h2>
+    <div class="action-grid">
+        <a href="/run" class="action-card">
+            <strong>Run New Simulation</strong>
+            <span>Configure bots and launch games</span>
+        </a>
+        <a href="/simulations" class="action-card">
+            <strong>View All Simulations</strong>
+            <span>Browse past results and statistics</span>
+        </a>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Available Bots</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Bot</th>
+                <th>Strategy</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td>GreedyBot</td><td>Maximises immediate wall score minus floor penalties</td></tr>
+            <tr><td>PlannedBot</td><td>Weighted utility: wall score, row/column progress, colour sets</td></tr>
+            <tr><td>RandomBot</td><td>Picks a random target line/colour, takes the largest source</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Recent Simulations</h2>
+    {% if simulations %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Bot 1</th>
+                <th>Bot 2</th>
+                <th>Games</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for sim in simulations %}
+            <tr>
+                <td>{{ sim.id }}</td>
+                <td>{{ sim.bot1_name }}</td>
+                <td>{{ sim.bot2_name }}</td>
+                <td>{{ sim.games_completed }} / {{ sim.num_games }}</td>
+                <td><span class="tag tag-{{ sim.status }}">{{ sim.status }}</span></td>
+                <td>{{ sim.created_at|date:"Y-m-d H:i" }}</td>
+                <td><a href="/simulations/{{ sim.id }}" class="btn btn-sm">View</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No simulations yet. <a href="/run">Run your first simulation</a>.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

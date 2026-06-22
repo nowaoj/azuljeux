@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Join Game #{{ game_id }}</h1>
+<p>Hosted by <strong>{{ host_name }}</strong></p>
+
+<form method="post" action="/play/pvp/join/{{ game_id }}/submit/" class="form">
+    {% csrf_token %}
+    <p style="margin-top:1rem">You'll join as <strong>{{ user.username }}</strong>.</p>
+    <button type="submit" class="btn btn-primary">Join Game</button>
+</form>
+<p><a href="/play/human/">← Back</a></p>
+{% endblock %}

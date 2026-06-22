@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Math IA &mdash; Statistical Analysis of Azul Bot Strategies</h1>
+<p class="subtitle">IB DP Mathematics Internal Assessment &mdash; Exploring game theory through simulation</p>
+
+<div class="section">
+    <h2>Research Question</h2>
+    <p>How do different heuristic strategies affect win rates, score distributions, and game length in the board game Azul?</p>
+    <p>This IA uses a simulation platform that plays thousands of Azul games between AI bots using different strategies. All game data is stored in a database and can be analysed using SQL queries, Python scripts, or the built-in visualisation tools.</p>
+</div>
+
+<div class="section">
+    <h2>Statistical Metrics</h2>
+    {% for m in metrics %}
+    <div class="metric-card">
+        <h3>{{ m.name }}</h3>
+        <p>{{ m.description }}</p>
+        <div class="metric-formula">{{ m.formula }}</div>
+        <div class="tags">
+            <span class="tag-vis">Visualisation: {{ m.visualisation }}</span>
+            <span class="tag-test">Test: {{ m.statistical_test }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="section">
+    <h2>Recommended Analysis Pipeline</h2>
+    <ol class="step-list">
+        {% for step in pipeline %}
+        <li>{{ step }}</li>
+        {% endfor %}
+    </ol>
+</div>
+
+<div class="section">
+    <h2>Example SQL Queries</h2>
+    <p>These queries can be run directly against the SQLite database (<code>db.sqlite3</code>) to extract data for analysis:</p>
+    {% for q in db_queries %}
+    <h4>{{ q.title }}</h4>
+    <div class="sql-box">{{ q.sql }}</div>
+    {% endfor %}
+</div>
+
+<div class="section">
+    <h2>Data Export</h2>
+    <p>You can export simulation data to CSV for analysis in Python or R:</p>
+    <pre class="sql-box">sqlite3 db.sqlite3 -header -csv "SELECT * FROM azul_game WHERE simulation_id = 1;" > games.csv</pre>
+</div>
+{% endblock %}

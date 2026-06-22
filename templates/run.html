@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+.toggle-wrap { display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+.toggle-wrap input { display:none; }
+.toggle-track { position:relative; width:40px; height:22px; background:#ccc; border-radius:11px; transition:background 0.2s; flex-shrink:0; }
+.toggle-track::after { content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; background:#fff; border-radius:50%; transition:transform 0.2s; }
+.toggle-wrap input:checked + .toggle-track { background:#2d5a3d; }
+.toggle-wrap input:checked + .toggle-track::after { transform:translateX(18px); }
+.toggle-label { font-size:0.85rem; font-weight:600; color:#444; }
+</style>
+
+<h1>Run Simulation</h1>
+<p class="subtitle">Configure a bot match-up and run multiple games</p>
+
+<form method="POST" action="/run/submit/" class="sim-form">
+    {% csrf_token %}
+    <div class="form-row">
+        <div class="form-group">
+            <label for="bot1">Bot 1</label>
+            <select name="bot1" id="bot1" required>
+                {% for bot in bot_choices %}
+                <option value="{{ bot }}" {% if bot == "PlannedBot" %}selected{% endif %}>{{ bot }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="bot2">Bot 2</label>
+            <select name="bot2" id="bot2" required>
+                {% for bot in bot_choices %}
+                <option value="{{ bot }}" {% if bot == "RandomBot" %}selected{% endif %}>{{ bot }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="num_games">Number of games</label>
+            <input type="number" name="num_games" id="num_games" value="100" min="1" max="10000" required>
+        </div>
+        <div class="form-group">
+            <label for="seed">Seed (optional)</label>
+            <input type="number" name="seed" id="seed" placeholder="e.g. 42" min="0">
+            <span class="help-text">Same seed = reproducible results</span>
+        </div>
+        <div class="form-group">
+            <label class="toggle-wrap">
+                <input type="checkbox" name="hundred_point" id="hundred_point">
+                <span class="toggle-track"></span>
+                <span class="toggle-label">Race to 100</span>
+            </label>
+            <span class="help-text">Game ends when a player reaches 100+ points</span>
+        </div>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Launch Simulation</button>
+    </div>
+</form>
+
+{% endblock %}

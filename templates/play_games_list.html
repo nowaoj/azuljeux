@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Completed Player Games</h1>
+
+{% if games %}
+<table class="table sortable">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Player 1</th>
+            <th>Player 2</th>
+            <th>Mode</th>
+            <th>Score P1</th>
+            <th>Score P2</th>
+            <th>Winner</th>
+            <th>Rounds</th>
+            <th>Replay</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for g in games %}
+        <tr>
+            <td>{{ g.id }}</td>
+            <td>{{ g.player1_name }}</td>
+            <td>{{ g.player2_name|default:"-" }}</td>
+            <td>{% if g.mode == "pve" %}PvE{% else %}PvP{% endif %}</td>
+            <td>{{ g.score1 }}</td>
+            <td>{{ g.score2 }}</td>
+            <td>
+                {% if g.winner == -1 %}
+                Draw
+                {% elif g.winner == 0 %}
+                {{ g.player1_name }}
+                {% else %}
+                {{ g.player2_name|default:"Player 2" }}
+                {% endif %}
+            </td>
+            <td>{{ g.rounds }}</td>
+            <td><a href="/play/game/{{ g.id }}/replay" class="btn btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No completed games yet. <a href="/play">Play a game!</a></p>
+{% endif %}
+{% endblock %}

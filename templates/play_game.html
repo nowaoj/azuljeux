@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+{% load azul_extras %}
+{% block content %}
+
+<style>
+.eval-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.eval-table th { background:#2d5a3d; color:#fff; padding:0.3rem 0.4rem; text-align:center; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.02em; white-space:nowrap; }
+.eval-table th:first-child { text-align:left; }
+.eval-table td { padding:0.25rem 0.4rem; text-align:center; border-bottom:1px solid #f0eee8; }
+.eval-table td:first-child { text-align:left; font-size:0.78rem; }
+.eval-table tr.chosen { background:#d4edda; font-weight:600; }
+.eval-table tr.chosen td { border-bottom-color:#b7dfb9; }
+.eval-table tr.finishes td { color:#c44; }
+
+/* Grid layout */
+.replay-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.top-bar { grid-column: 1 / -1; }
+.players-area { grid-column: 1 / -1; display:grid; grid-template-columns: 1fr 1fr; gap:1rem; }
+
+/* Top row */
+.top-split { display:grid; grid-template-columns:1fr auto; gap:1.5rem; align-items:start; }
+.top-left { display:flex; flex-direction:column; gap:0.5rem; }
+.top-right { display:flex; flex-direction:column; gap:0.75rem; }
+.factories-wrap { display:flex; gap:0.5rem; flex-wrap:wrap; }
+.factory { background:#f0ece7; border-radius:8px; padding:0.4rem; min-width:80px; text-align:center; }
+.factory-label { font-size:0.7rem; font-weight:600; color:#888; margin-bottom:0.2rem; }
+.factory-tiles { display:flex; flex-wrap:wrap; justify-content:center; gap:1px; }
+.center-wrap { display:flex; align-items:center; gap:0.3rem; background:#f0ece7; border-radius:8px; padding:0.4rem 0.6rem; }
+.center-label { font-size:0.7rem; font-weight:600; color:#888; }
+.center-tiles { display:flex; gap:1px; }
+.start-tile { background:gold !important; border:1px solid #b8860b; font-weight:700; color:#b8860b; }
+.bag-box, .lid-box { background:white; border-radius:8px; padding:0.5rem; font-weight:700; font-size:0.85rem; }
+.bag-box { border:2px solid #2d5a3d; }
+.lid-box { border:2px solid #d4a84b; }
+.bag-box .label, .lid-box .label { display:block; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.3rem; }
+.bag-box .label { color:#2d5a3d; }
+.lid-box .label { color:#8B6914; }
+.bag-tiles, .lid-tiles { display:flex; flex-wrap:wrap; gap:1px; max-width:200px; }
+
+/* Tile classes */
+.tile { display:inline-block; width:24px; height:24px; border-radius:4px; margin:0; }
+.tile.xs { width:16px; height:16px; border-radius:3px; }
+.tile.sm { width:24px; height:24px; border-radius:4px; }
+.tile.md { width:32px; height:32px; border-radius:5px; }
+img.tile { display:inline-block; object-fit:contain; }
+img.tile.placed { border:2px solid #333; border-radius:6px; }
+
+/* Player boards */
+.player-board { background:white; border-radius:8px; padding:1rem; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+.player-board.current-turn { box-shadow:0 0 0 3px #2d5a3d; }
+.board-grid { display:grid; grid-template-columns:auto 1fr; gap:0.3rem 0.6rem; }
+.board-section-label { font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; color:#999; margin-bottom:0.3rem; grid-column:1/-1; }
+.pattern-line { display:flex; align-items:center; gap:2px; }
+.line-label { font-size:0.72rem; font-weight:600; color:#888; width:1.5rem; }
+.wall-cell { width:28px; height:28px; border-radius:4px; display:flex; align-items:center; justify-content:center; }
+.wall-cell img { width:28px; height:28px; }
+.floor-group { grid-column:1/-1; }
+
+/* Move buttons */
+.moves-section { grid-column:1/-1; margin-top:1rem; }
+.moves-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0.4rem; }
+.move-btn { display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.6rem; background:white; border:1px solid #ddd; border-radius:6px; cursor:pointer; font-size:0.82rem; text-align:left; width:100%; transition:all 0.15s; }
+.move-btn:hover { background:#f0fff4; border-color:#2d5a3d; box-shadow:0 1px 4px rgba(45,90,61,0.15); }
+.move-btn .tile { width:20px; height:20px; border-radius:3px; flex-shrink:0; }
+.move-form { margin:0; }
+
+/* Status bar */
+.status-bar { grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; padding:0.6rem 1rem; border-radius:8px; font-size:0.9rem; }
+.status-bar.your-turn { background:#d4edda; border:1px solid #b7dfb9; color:#155724; }
+.status-bar.waiting { background:#fff3cd; border:1px solid #ffc107; color:#856404; }
+.status-bar.game-over { background:#f8d7da; border:1px solid #f5c6cb; color:#721c24; }
+
+/* Forfeit link */
+.forfeit-link { color:#c44; font-size:0.78rem; cursor:pointer; }
+.forfeit-link:hover { text-decoration:underline; }
+
+/* Lobby */
+.lobby-box { text-align:center; padding:3rem 1rem; }
+.lobby-box .game-id { font-size:3rem; font-weight:700; color:#2d5a3d; letter-spacing:0.05em; margin:1rem 0; }
+.lobby-box .share-note { color:#888; font-size:0.9rem; margin-top:1.5rem; }
+</style>
+
+<h1>Play Azul</h1>
+
+{% if waiting %}
+<div class="status-bar waiting">
+    <strong>Waiting for opponent to join&#8230;</strong>
+    <span>Share the Game ID below</span>
+</div>
+<div class="lobby-box">
+    <p style="font-size:1.1rem;color:#555">Game created by <strong>{{ host_name }}</strong></p>
+    <p style="font-size:1rem;color:#888;margin-top:0.5rem">Share this code with your opponent:</p>
+    <div class="game-code" style="font-size:3.5rem;font-weight:800;color:#2d5a3d;letter-spacing:0.15em;margin:0.8rem 0;font-family:monospace">{{ game_code }}</div>
+    <button class="btn btn-sm" onclick="navigator.clipboard.writeText('{{ game_code }}');this.textContent='Copied!';setTimeout(function(){this.textContent='Copy Code'}.bind(this),2000)">Copy Code</button>
+    <p class="share-note" style="margin-top:1.5rem">Your opponent can enter this code on the Join page.<br>The game will start automatically when they join.</p>
+</div>
+<form id="forfeit-form" method="post" action="/play/game/{{ game_id }}/forfeit/" style="display:none">
+    {% csrf_token %}
+    <input type="hidden" name="p" value="{{ p }}">
+</form>
+<script>
+(function connectWs() {
+    var proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var ws = new WebSocket(proto + '//' + window.location.host + '/ws/game/{{ game_id }}/');
+    ws.onmessage = function(e) {
+        var data = JSON.parse(e.data);
+        if (data.status === 'playing' || data.status === 'completed') {
+            location.reload();
+        }
+    };
+    ws.onclose = function() {
+        setTimeout(connectWs, 3000);
+    };
+})();
+</script>
+
+{% else %}
+
+<!--- game-over banner --->
+{% if game_over %}
+<div class="status-bar game-over">
+    <strong>Game Over!</strong>
+    <span>
+        {% if winner == -1 %}
+        Draw!
+        {% elif winner == p %}
+        You win!
+        {% else %}
+        {{ opp_name }} wins!
+        {% endif %}
+        &mdash; {{ scores.0 }} vs {{ scores.1 }}
+    </span>
+    <a href="/play/game/{{ game_id }}/replay/" class="btn btn-sm">View Replay</a>
+    <a href="/play" class="btn btn-sm">Menu</a>
+</div>
+{% elif bot_thinking %}
+<div class="status-bar waiting">
+    <span><strong>{{ opp_name }}</strong> is thinking&#8230;</span>
+    <span class="forfeit-link" onclick="document.getElementById('forfeit-form').submit()">Forfeit</span>
+</div>
+{% elif is_my_turn %}
+<div class="status-bar your-turn">
+    <strong>Your turn!</strong>
+    <span>Round {{ round }} &middot; {{ scores.0 }} vs {{ scores.1 }}</span>
+    <span class="forfeit-link" onclick="document.getElementById('forfeit-form').submit()">Forfeit</span>
+</div>
+{% else %}
+<div class="status-bar waiting">
+    <span>Waiting for <strong>{{ opp_name }}</strong> to move&#8230;</span>
+    <span class="forfeit-link" onclick="document.getElementById('forfeit-form').submit()">Forfeit</span>
+</div>
+{% endif %}
+
+<form id="forfeit-form" method="post" action="/play/game/{{ game_id }}/forfeit/" style="display:none">
+    {% csrf_token %}
+    <input type="hidden" name="p" value="{{ p }}">
+</form>
+
+<div class="replay-grid">
+
+    <!--- top: factories + center + bag/lid --->
+    <div class="top-bar">
+        <div class="top-split">
+            <div class="top-left">
+                <div style="font-size:0.85rem;font-weight:600;color:#555;">
+                    Round {{ round }} &middot;
+                    {% if mode == 'pve' %}
+                    PvE: {{ my_name }} vs {{ opp_name }}
+                    {% else %}
+                    PvP: {{ player_names.0 }} vs {{ player_names.1 }}
+                    {% endif %}
+                </div>
+                <div class="factories-wrap" id="factories-wrap">
+                    {% for f in factories %}
+                    <div class="factory" data-source-type="factory" data-source-idx="{{ forloop.counter0 }}">
+                        <div class="factory-label">{{ f.label }}</div>
+                        <div class="factory-tiles">
+                            {% for t in f.tiles %}
+                            <span class="tile sm source-tile" style="background:{{ t.hex }}" data-source-key="factory-{{ forloop.parentloop.counter0 }}-{{ t.name|upper }}" data-color-name="{{ t.name|upper }}" data-color-hex="{{ t.hex }}"></span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="center-wrap" data-source-type="center" data-source-idx="-1">
+                    <span class="center-label">C:</span>
+                    <div class="center-tiles">
+                        {% for t in center_tiles %}
+                        <span class="tile sm source-tile" style="background:{{ t.hex }}" data-source-key="center--1-{{ t.name|upper }}" data-color-name="{{ t.name|upper }}" data-color-hex="{{ t.hex }}"></span>
+                        {% endfor %}
+                        {% if has_start %}
+                        <span class="tile sm start-tile">&#9733;</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="top-right">
+                <div class="bag-box">
+                    <span class="label">Bag ({{ bag_tiles|length }})</span>
+                    <div class="bag-tiles">
+                        {% for t in bag_tiles %}
+                        <span class="tile xs" style="background:{{ t.hex }}"></span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="lid-box">
+                    <span class="label">Lid ({{ lid_tiles|length }})</span>
+                    <div class="lid-tiles">
+                        {% for t in lid_tiles %}
+                        <span class="tile xs" style="background:{{ t.hex }}"></span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!--- Players side-by-side --->
+    <div class="players-area">
+
+        <!--- Player 0 --->
+        <div class="player-board{% if current_player == 0 %} current-turn{% endif %}">
+            <h3>{{ player_names.0 }}{% if current_player == 0 %} (current turn){% endif %} &mdash; Score: {{ scores.0 }}</h3>
+            <div class="board-grid">
+                <div class="pattern-lines">
+                    <div class="board-section-label">Pattern Lines</div>
+                    {% for pl in pattern_lines.0 %}
+                    <div class="pattern-line{% if is_my_turn and current_player == 0 %} pattern-target{% endif %}" data-line-idx="{{ pl.index }}"{% if is_my_turn and current_player == 0 %} onclick="selectTarget({{ pl.index }})"{% endif %}>
+                        <span class="line-label">L{{ pl.index|add:1 }}:</span>
+                        {% for t in pl.tiles %}
+                        <span class="tile" style="background:{{ t.hex }}"></span>
+                        {% endfor %}
+                        {% for _ in pl.empty|times %}
+                        <span class="tile" style="background:#f5f3ef;border:1px dashed #ddd;"></span>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="wall">
+                    <div class="board-section-label">Wall</div>
+                    <div style="display:grid;grid-template-columns:repeat(5,28px) 20px;gap:2px;">
+                        {% for r in wall.0 %}
+                        {% for c in r.cells %}
+                        <div class="wall-cell" style="background:{{ c.hex }};{% if c.placed %}border:2px solid #333;opacity:1{% else %}border:1px solid #ddd;opacity:0.25{% endif %};">
+                            {% if c.placed %}
+                            <span class="tile" style="background:{{ c.hex }};width:24px;height:24px;display:inline-block;border-radius:4px;"></span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        <div style="display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;{% if r.complete %}color:#2d5a3d{% else %}color:#ddd{% endif %}">{% if r.complete %}✓{% else %}·{% endif %}</div>
+                        {% endfor %}
+                        {% for wc in wall_bonuses.0.col_complete %}
+                        <div style="text-align:center;font-size:10px;font-weight:bold;padding-top:2px;{% if wc %}color:#2d5a3d{% else %}color:#ddd{% endif %}">{% if wc %}✓{% else %}·{% endif %}</div>
+                        {% endfor %}
+                        <div></div>
+                    </div>
+                    {% if wall_bonuses.0.colors > 0 %}
+                    <div style="margin-top:3px;font-size:10px;color:#555;display:flex;gap:3px;align-items:center;flex-wrap:wrap;">
+                        <span style="font-weight:600;">Colors:</span>
+                        {% for cd in wall_bonuses.0.color_detail %}
+                        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ cd.hex }};{% if not cd.complete %}opacity:0.25{% endif %}"></span>
+                        {% endfor %}
+                        <span>({{ wall_bonuses.0.colors }}/5)</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if floor_lines.0 or is_my_turn %}
+                <div class="floor-group{% if is_my_turn and current_player == 0 %} floor-target{% endif %}"{% if is_my_turn and current_player == 0 %} onclick="selectTarget(-1)"{% endif %}>
+                    <div class="board-section-label">Floor</div>
+                    <div style="display:flex;gap:1px;flex-wrap:wrap;">
+                        {% if not floor_lines.0 and is_my_turn %}
+                        <span style="font-size:0.78rem;color:#999;padding:0.2rem 0">Click to place on floor</span>
+                        {% endif %}
+                        {% for t in floor_lines.0 %}
+                        {% if t.name == 'START' %}
+                        <span class="tile xs start-tile">&#9733;</span>
+                        {% else %}
+                        <span class="tile xs" style="background:{{ t.hex }}"></span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!--- Player 1 --->
+        <div class="player-board{% if current_player == 1 %} current-turn{% endif %}">
+            <h3>{{ player_names.1 }}{% if current_player == 1 %} (current turn){% endif %} &mdash; Score: {{ scores.1 }}</h3>
+            <div class="board-grid">
+                <div class="pattern-lines">
+                    <div class="board-section-label">Pattern Lines</div>
+                    {% for pl in pattern_lines.1 %}
+                    <div class="pattern-line{% if is_my_turn and current_player == 1 %} pattern-target{% endif %}" data-line-idx="{{ pl.index }}"{% if is_my_turn and current_player == 1 %} onclick="selectTarget({{ pl.index }})"{% endif %}>
+                        <span class="line-label">L{{ pl.index|add:1 }}:</span>
+                        {% for t in pl.tiles %}
+                        <span class="tile" style="background:{{ t.hex }}"></span>
+                        {% endfor %}
+                        {% for _ in pl.empty|times %}
+                        <span class="tile" style="background:#f5f3ef;border:1px dashed #ddd;"></span>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="wall">
+                    <div class="board-section-label">Wall</div>
+                    <div style="display:grid;grid-template-columns:repeat(5,28px) 20px;gap:2px;">
+                        {% for r in wall.1 %}
+                        {% for c in r.cells %}
+                        <div class="wall-cell" style="background:{{ c.hex }};{% if c.placed %}border:2px solid #333;opacity:1{% else %}border:1px solid #ddd;opacity:0.25{% endif %};">
+                            {% if c.placed %}
+                            <span class="tile" style="background:{{ c.hex }};width:24px;height:24px;display:inline-block;border-radius:4px;"></span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        <div style="display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;{% if r.complete %}color:#2d5a3d{% else %}color:#ddd{% endif %}">{% if r.complete %}✓{% else %}·{% endif %}</div>
+                        {% endfor %}
+                        {% for wc in wall_bonuses.1.col_complete %}
+                        <div style="text-align:center;font-size:10px;font-weight:bold;padding-top:2px;{% if wc %}color:#2d5a3d{% else %}color:#ddd{% endif %}">{% if wc %}✓{% else %}·{% endif %}</div>
+                        {% endfor %}
+                        <div></div>
+                    </div>
+                    {% if wall_bonuses.1.colors > 0 %}
+                    <div style="margin-top:3px;font-size:10px;color:#555;display:flex;gap:3px;align-items:center;flex-wrap:wrap;">
+                        <span style="font-weight:600;">Colors:</span>
+                        {% for cd in wall_bonuses.1.color_detail %}
+                        <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ cd.hex }};{% if not cd.complete %}opacity:0.25{% endif %}"></span>
+                        {% endfor %}
+                        <span>({{ wall_bonuses.1.colors }}/5)</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if floor_lines.1 or is_my_turn %}
+                <div class="floor-group{% if is_my_turn and current_player == 1 %} floor-target{% endif %}"{% if is_my_turn and current_player == 1 %} onclick="selectTarget(-1)"{% endif %}>
+                    <div class="board-section-label">Floor</div>
+                    <div style="display:flex;gap:1px;flex-wrap:wrap;">
+                        {% if not floor_lines.1 and is_my_turn %}
+                        <span style="font-size:0.78rem;color:#999;padding:0.2rem 0">Click to place on floor</span>
+                        {% endif %}
+                        {% for t in floor_lines.1 %}
+                        {% if t.name == 'START' %}
+                        <span class="tile xs start-tile">&#9733;</span>
+                        {% else %}
+                        <span class="tile xs" style="background:{{ t.hex }}"></span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <!--- interactive move UI --->
+    {% if is_my_turn and legal_moves %}
+    <div class="moves-section">
+        <h3 id="move-instruction">Click a tile on a factory or the center to select it</h3>
+        <form id="move-form" method="post" action="/play/game/{{ game_id }}/move/" style="display:none">
+            {% csrf_token %}
+            <input type="hidden" name="p" value="{{ p }}">
+            <input type="hidden" name="source_type" value="">
+            <input type="hidden" name="source_idx" value="">
+            <input type="hidden" name="color" value="">
+            <input type="hidden" name="line_idx" value="">
+        </form>
+    </div>
+    <script id="legal-moves-data" type="application/json">{{ legal_moves_json|safe }}</script>
+    {% endif %}
+
+</div>
+
+{% endif %}
+
+{% if not waiting %}
+<script>
+(function connectWs() {
+    var proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var ws = new WebSocket(proto + '//' + window.location.host + '/ws/game/{{ game_id }}/');
+    ws.onmessage = function(e) {
+        var data = JSON.parse(e.data);
+        if (data.game_over || data.is_my_turn) {
+            location.reload();
+        }
+    };
+    ws.onclose = function() {
+        setTimeout(connectWs, 3000);
+    };
+})();
+</script>
+{% endif %}
+
+{% if is_my_turn and legal_moves %}
+<style>
+.source-tile { cursor:pointer; transition:all 0.15s; }
+.source-tile:hover { transform:scale(1.25); box-shadow:0 0 0 3px #2d5a3d; z-index:2; position:relative; }
+.source-tile.source-hl { transform:scale(1.3); box-shadow:0 0 0 3px #2d5a3d,0 0 12px rgba(45,90,61,0.4); z-index:2; position:relative; }
+.pattern-target, .floor-target { cursor:pointer; transition:all 0.15s; border-radius:4px; padding:2px; }
+.pattern-target.target-hl { background:#d4edda; box-shadow:0 0 0 2px #2d5a3d; }
+.pattern-target.target-hl:hover { background:#c3e6cb; }
+.floor-target.target-hl { background:#fff3cd; box-shadow:0 0 0 2px #d4a84b; }
+.floor-target.target-hl:hover { background:#ffeaa0; }
+</style>
+<script>
+(function() {
+    var legalMoves;
+    try { legalMoves = JSON.parse(document.getElementById('legal-moves-data').textContent); } catch(e) { return; }
+    if (!legalMoves || legalMoves.length === 0) return;
+
+    var moveIndex = {};
+    legalMoves.forEach(function(m) {
+        var key = m.source_type + '-' + m.source_idx + '-' + m.color;
+        if (!moveIndex[key]) moveIndex[key] = [];
+        moveIndex[key].push(m);
+    });
+
+    var selected = null;
+    var instruction = document.getElementById('move-instruction');
+
+    window.selectSource = function(sourceType, sourceIdx, colorVal, colorName, hex) {
+        var key = sourceType + '-' + sourceIdx + '-' + colorVal;
+        var targets = moveIndex[key];
+        if (!targets) return;
+
+        selected = {sourceType: sourceType, sourceIdx: sourceIdx, color: colorVal};
+
+        document.querySelectorAll('.source-hl').forEach(function(el) { el.classList.remove('source-hl'); });
+        document.querySelectorAll('[data-source-key="' + key + '"]').forEach(function(el) { el.classList.add('source-hl'); });
+
+        document.querySelectorAll('.target-hl').forEach(function(el) { el.classList.remove('target-hl'); });
+
+        targets.forEach(function(t) {
+            var el;
+            if (t.line_idx === -1) {
+                el = document.querySelector('.floor-target');
+            } else {
+                el = document.querySelector('[data-line-idx="' + t.line_idx + '"].pattern-target');
+            }
+            if (el) el.classList.add('target-hl');
+        });
+
+        instruction.textContent = 'Selected ' + colorName + ' tiles. Click a highlighted pattern line or floor to place them.';
+    };
+
+    window.selectTarget = function(lineIdx) {
+        if (!selected) return;
+        var form = document.getElementById('move-form');
+        form.querySelector('[name="source_type"]').value = selected.sourceType;
+        form.querySelector('[name="source_idx"]').value = selected.sourceIdx;
+        form.querySelector('[name="color"]').value = selected.color;
+        form.querySelector('[name="line_idx"]').value = lineIdx;
+        form.submit();
+    };
+
+    document.querySelectorAll('.source-tile').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var key = this.getAttribute('data-source-key');
+            var type = this.closest('[data-source-type]').getAttribute('data-source-type');
+            var idx = this.closest('[data-source-type]').getAttribute('data-source-idx');
+            var colorName = this.getAttribute('data-color-name');
+            var hex = this.getAttribute('data-color-hex');
+            var colorVal = null;
+            legalMoves.forEach(function(m) {
+                if (m.source_type === type && String(m.source_idx) === idx && m.color_name === colorName) {
+                    colorVal = m.color;
+                }
+            });
+            if (colorVal !== null) {
+                selectSource(type, parseInt(idx), colorVal, colorName, hex);
+            }
+        });
+    });
+})();
+</script>
+{% endif %}
+
+{% endblock %}

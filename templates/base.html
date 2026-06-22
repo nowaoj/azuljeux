@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azul Game Analysis</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">Azul Analysis</a>
+            <div class="nav-links">
+                <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Dashboard</a>
+                <a href="/play" {% if request.path|slice:':5' == '/play' %}class="active"{% endif %}>Play</a>
+                <a href="/run" {% if request.path|slice:':4' == '/run' %}class="active"{% endif %}>Simulate</a>
+                <a href="/simulations" {% if request.path|slice:':12' == '/simulations' %}class="active"{% endif %}>All Simulations</a>
+                <a href="/scenario" {% if request.path|slice:':9' == '/scenario' %}class="active"{% endif %}>Scenario Builder</a>
+                <a href="/bots" {% if request.path|slice:':5' == '/bots' %}class="active"{% endif %}>Bot Guide</a>
+                {% if user.is_authenticated %}
+                <a href="{% url 'profile' %}" {% if request.path|slice:':9' == '/profile/' %}class="active"{% endif %}>Profile</a>
+                {% else %}
+                <a href="{% url 'login' %}" {% if request.path|slice:':7' == '/login/' %}class="active"{% endif %}>Login</a>
+                <a href="{% url 'register' %}" {% if request.path|slice:':10' == '/register' %}class="active"{% endif %}>Register</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+    <main class="container">
+        {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+            <div class="message {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

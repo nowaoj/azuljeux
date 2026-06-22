@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+.eval-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.eval-table th { background:#2d5a3d; color:#fff; padding:0.3rem 0.4rem; text-align:center; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.02em; white-space:nowrap; }
+.eval-table th:first-child { text-align:left; }
+.eval-table td { padding:0.25rem 0.4rem; text-align:center; border-bottom:1px solid #f0eee8; }
+.eval-table td:first-child { text-align:left; font-size:0.78rem; }
+.eval-table tr.chosen { background:#d4edda; font-weight:600; }
+.eval-table tr.chosen td { border-bottom-color:#b7dfb9; }
+.eval-table tr.finishes td { color:#c44; }
+
+.reason-box { background:#fff8e1; border:1px solid #f0dca0; border-radius:8px; padding:0.6rem 0.8rem; font-size:0.85rem; color:#8B6914; }
+.reason-box strong { color:#6d5200; }
+
+/* Grid layout */
+.replay-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.top-bar { grid-column: 1 / -1; }
+.players-area { grid-column: 1 / -1; display:grid; grid-template-columns: 1fr 1fr; gap:1rem; }
+.reason-area { grid-column: 1 / -1; }
+.eval-area { grid-column: 1 / -1; }
+
+/* Top row: factories + center + bag/lid */
+.top-row { display:flex; align-items:flex-start; gap:1rem; flex-wrap:wrap; }
+.factories-wrap { display:flex; gap:0.5rem; flex-wrap:wrap; }
+.factory { background:#f0ece7; border-radius:8px; padding:0.4rem; min-width:80px; text-align:center; }
+.factory-label { font-size:0.7rem; font-weight:600; color:#888; margin-bottom:0.2rem; }
+.factory-tiles { display:flex; flex-wrap:wrap; justify-content:center; gap:1px; }
+.center-wrap { display:flex; align-items:center; gap:0.3rem; background:#f0ece7; border-radius:8px; padding:0.4rem 0.6rem; }
+.center-label { font-size:0.7rem; font-weight:600; color:#888; }
+.bag-lid { display:flex; gap:0.5rem; margin-left:auto; align-self:stretch; }
+.top-split { display:grid; grid-template-columns:1fr auto; gap:1.5rem; align-items:start; }
+.top-left { display:flex; flex-direction:column; gap:0.5rem; }
+.top-right { display:flex; flex-direction:column; gap:0.75rem; }
+.bag-box, .lid-box { background:white; border-radius:8px; padding:0.5rem; font-weight:700; font-size:0.85rem; }
+.bag-box { border:2px solid #2d5a3d; }
+.lid-box { border:2px solid #d4a84b; }
+.bag-box .label, .lid-box .label { display:block; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.3rem; }
+.bag-box .label { color:#2d5a3d; }
+.lid-box .label { color:#8B6914; }
+.bag-tiles, .lid-tiles { display:flex; flex-wrap:wrap; gap:1px; max-width:200px; }
+.bag-tiles .tile.xs, .lid-tiles .tile.xs { width:16px; height:16px; border-radius:3px; }
+
+/* Center tiles in the top bar */
+.center-tiles { display:flex; gap:1px; }
+.start-tile { background:gold !important; border:1px solid #b8860b; font-weight:700; color:#b8860b; }
+.tile.xs { width:16px; height:16px; border-radius:3px; margin:0; }
+img.tile { display:inline-block; object-fit:contain; }
+img.tile.placed { border:2px solid #333; border-radius:6px; }
+</style>
+
+<h1>Game Replay</h1>
+<p class="subtitle">Game #{{ game.id }} &mdash; Step <span id="step-display">1</span>/{{ total_steps }}</p>
+
+<div class="replay-controls">
+    <span class="ctrl-left">
+        <button onclick="goStep(-Infinity)">&#x23EE; First</button>
+        <button onclick="goStep(-1)">&#x25C0; Prev</button>
+    </span>
+    <span id="action-display" class="action-label">Game start</span>
+    <span class="ctrl-right">
+        <button onclick="goStep(1)">Next &#x25B6;</button>
+        <button onclick="goStep(Infinity)">Last &#x23ED;</button>
+    </span>
+</div>
+
+<div id="board" class="board"></div>
+
+<script>
+const snapshots = {{ snapshots_json | safe }};
+let current = 0;
+
+const TILE_IMAGES = {{ tile_images_json | safe }};
+const ASSETS = "/static/assets/";
+const BOT_NAMES = ["{{ bot1_name }}", "{{ bot2_name }}"];
+
+const COLORS = { 0:"#0066CC", 1:"#FFCC00", 2:"#CC3333", 3:"#444444", 4:"#DDDDDD" };
+const COLOR_SLUGS = { 0:"blue", 1:"yellow", 2:"red", 3:"black", 4:"white" };
+const WALL = [[0,1,2,3,4],[4,0,1,2,3],[3,4,0,1,2],[2,3,4,0,1],[1,2,3,4,0]];
+const FLOOR_PENALTIES = [-1,-1,-2,-2,-2,-3,-3];
+
+function tileHTML(colorVal, size) {
+    const sz = size || "sm";
+    const slug = COLOR_SLUGS[colorVal] || "";
+    if (TILE_IMAGES[slug]) {
+        return '<img src="' + ASSETS + slug + '.png" class="tile ' + sz + '" alt="' + slug + '">';
+    }
+    return '<span class="tile ' + sz + '" style="background:' + (COLORS[colorVal] || "#888") + '"></span>';
+}
+
+function startTileHTML(size) {
+    const sz = size || "sm";
+    if (TILE_IMAGES["start"]) {
+        return '<img src="' + ASSETS + 'start.png" class="tile ' + sz + '" alt="START">';
+    }
+    return '<span class="tile ' + sz + ' start-tile" title="START">★</span>';
+}
+
+function wallTileHTML(colorVal, placed, size) {
+    const sz = size || "sm";
+    const slug = COLOR_SLUGS[colorVal] || "";
+    if (TILE_IMAGES[slug]) {
+        const cls = placed ? "tile " + sz + " placed" : "tile " + sz;
+        const opacity = placed ? "1" : "0.2";
+        return '<img src="' + ASSETS + slug + '.png" class="' + cls + '" style="opacity:' + opacity + '" alt="' + slug + '">';
+    }
+    if (placed) {
+        return '<span class="tile ' + sz + '" style="background:' + (COLORS[colorVal] || "#888") + ';border:2px solid #333"></span>';
+    }
+    return '<span class="tile ' + sz + ' faded" style="background:' + (COLORS[colorVal] || "#888") + ';opacity:0.25"></span>';
+}
+
+function renderBoard(snap) {
+    const state = JSON.parse(snap.state_json);
+    const stepData = snapshots[current];
+
+    document.getElementById("step-display").textContent = current + 1;
+    const desc = stepData.action_desc || "";
+    const pipeIdx = desc.indexOf(" | ");
+    document.getElementById("action-display").textContent = pipeIdx >= 0 ? desc.slice(0, pipeIdx) : desc;
+
+    // Score deltas vs previous snapshot
+    let scoreDelta0 = 0, scoreDelta1 = 0;
+    if (current > 0) {
+        const prevState = JSON.parse(snapshots[current - 1].state_json);
+        scoreDelta0 = ((state.players && state.players[0]) ? state.players[0].score : 0)
+                    - ((prevState.players && prevState.players[0]) ? prevState.players[0].score : 0);
+        scoreDelta1 = ((state.players && state.players[1]) ? state.players[1].score : 0)
+                    - ((prevState.players && prevState.players[1]) ? prevState.players[1].score : 0);
+    }
+
+    const factories = state.factories || [];
+    const center = state.center || [];
+    const bag = state.bag || [];
+    const lid = state.lid || [];
+    const players = state.players || [{}, {}];
+    const phase = state.phase || "";
+    const round = state.round || 1;
+    const cp = state.current_player;
+    const gameOver = state.game_over || false;
+
+    const realCenter = center.filter(function(c) { return typeof c === "number"; });
+    const hasStart = center.indexOf("START") >= 0;
+
+    let html = '<div class="replay-grid">';
+
+    // ── Top bar: header + factories + center + bag/lid ──────────────
+    html += '<div class="top-bar"><div class="top-split">';
+
+    // ── Left: factories + center ────────────────────────────────────
+    html += '<div class="top-left">';
+
+    html += '<div style="font-size:0.85rem;font-weight:600;color:#555;">'
+        + 'Round ' + round + ' &middot; ' + phase
+        + (gameOver ? ' &middot; <span style="color:#c44">Game Over</span>' : '')
+        + (gameOver && state.winner >= 0 ? ' &middot; Winner: P' + state.winner : '')
+        + ' &middot; Current: P' + cp
+        + '</div>';
+
+    html += '<div class="factories-wrap">';
+    factories.forEach(function(f, i) {
+        html += '<div class="factory"><div class="factory-label">F' + (i + 1) + '</div><div class="factory-tiles">';
+        (f || []).forEach(function(t) {
+            html += tileHTML(t);
+        });
+        html += '</div></div>';
+    });
+    html += '</div>';
+
+    html += '<div class="center-wrap"><span class="center-label">C:</span><div class="center-tiles">';
+    realCenter.forEach(function(t) {
+        html += tileHTML(t);
+    });
+    if (hasStart) {
+        html += startTileHTML("sm");
+    }
+    html += '</div></div>';
+
+    html += '</div>';  // end top-left
+
+    // ── Right: bag + lid with tiles ─────────────────────────────────
+    html += '<div class="top-right">';
+
+    html += '<div class="bag-box"><span class="label">Bag (' + bag.length + ')</span><div class="bag-tiles">';
+    bag.forEach(function(t) {
+        html += tileHTML(t, "xs");
+    });
+    html += '</div></div>';
+
+    html += '<div class="lid-box"><span class="label">Lid (' + lid.length + ')</span><div class="lid-tiles">';
+    lid.forEach(function(t) {
+        if (t === "START") {
+            html += startTileHTML("xs");
+        } else {
+            html += tileHTML(t, "xs");
+        }
+    });
+    html += '</div></div>';
+
+    html += '</div>';  // end top-right
+    html += '</div></div>';  // end top-split, end top-bar
+
+    // ── Players side-by-side ────────────────────────────────────────
+    html += '<div class="players-area">';
+    players.forEach(function(p, pi) {
+        const patternLines = p.pattern_lines || [];
+        const wall = p.wall || [[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null],[null,null,null,null,null]];
+        const floorLine = p.floor_line || [];
+        const score = p.score || 0;
+        const isCurrent = pi === cp;
+        const botName = BOT_NAMES[pi] || "Player " + pi;
+        const delta = pi === 0 ? scoreDelta0 : scoreDelta1;
+        let scoreLabel = 'Score: ' + score;
+        if (delta !== 0) {
+            scoreLabel += ' <span style="' + (delta > 0 ? 'color:#2d5a3d' : 'color:#c44') + '">(' + (delta > 0 ? '+' : '') + delta + ')</span>';
+        }
+        html += '<div class="player-board' + (isCurrent ? ' current-turn' : '') + '">'
+            + '<h3>' + botName + (isCurrent ? ' (current turn)' : '') + ' &mdash; ' + scoreLabel + '</h3>'
+            + '<div class="board-grid">'
+            + '<div class="pattern-lines"><div class="board-section-label">Pattern Lines</div>';
+
+        patternLines.forEach(function(pl, li) {
+            const maxSize = li + 1;
+            html += '<div class="pattern-line"><span class="line-label">L' + (li + 1) + ':</span>';
+            for (let j = 0; j < maxSize; j++) {
+                if (j < pl.length) {
+                    html += tileHTML(pl[j]);
+                } else {
+                    html += '<span class="tile sm empty"></span>';
+                }
+            }
+            html += '</div>';
+        });
+
+        html += '</div><div class="wall"><div class="board-section-label">Wall</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(5,28px) 20px;gap:2px;">';
+        for (let r = 0; r < 5; r++) {
+            let rowComplete = true;
+            for (let c = 0; c < 5; c++) {
+                const targetColor = WALL[r][c];
+                const placed = wall[r][c] !== null;
+                if (!placed) rowComplete = false;
+                html += wallTileHTML(targetColor, placed);
+            }
+            const rcColor = rowComplete ? '#2d5a3d' : '#ddd';
+            html += '<div style="display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;color:' + rcColor + ';">' + (rowComplete ? '✓' : '·') + '</div>';
+        }
+        for (let c = 0; c < 5; c++) {
+            let colComplete = true;
+            for (let r = 0; r < 5; r++) {
+                if (wall[r][c] === null) { colComplete = false; break; }
+            }
+            const ccColor = colComplete ? '#2d5a3d' : '#ddd';
+            html += '<div style="text-align:center;font-size:10px;font-weight:bold;padding-top:2px;color:' + ccColor + ';">' + (colComplete ? '✓' : '·') + '</div>';
+        }
+        html += '<div></div>';
+        html += '</div>';  // end wall grid
+
+        // Color set indicators
+        const colorSlugs = ['blue', 'yellow', 'red', 'black', 'white'];
+        const colorHexes = ['#0066CC', '#FFCC00', '#CC3333', '#444444', '#DDDDDD'];
+        let colorsComplete = 0;
+        let colorHtml = '';
+        for (let ci = 0; ci < 5; ci++) {
+            let complete = true;
+            for (let r = 0; r < 5; r++) {
+                let found = false;
+                for (let c = 0; c < 5; c++) {
+                    if (wall[r][c] === ci) { found = true; break; }
+                }
+                if (!found) { complete = false; break; }
+            }
+            if (complete) colorsComplete++;
+            colorHtml += '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + colorHexes[ci] + ';' + (complete ? '' : 'opacity:0.25') + ';"></span>';
+        }
+        if (colorsComplete > 0) {
+            html += '<div style="margin-top:3px;font-size:10px;color:#555;display:flex;gap:3px;align-items:center;flex-wrap:wrap;"><span style="font-weight:600;">Colors:</span>'
+                + colorHtml
+                + '<span>(' + colorsComplete + '/5)</span></div>';
+        }
+
+        html += '</div></div>';
+
+        html += '<div class="floor-line"><span class="board-section-label">Floor:</span>';
+        for (let i = 0; i < 7; i++) {
+            if (i < floorLine.length) {
+                const tile = floorLine[i];
+                if (tile === "START") {
+                    html += startTileHTML("sm");
+                } else {
+                    html += tileHTML(tile);
+                }
+            } else {
+                html += '<span class="tile sm empty"></span>';
+            }
+            const pen = i < FLOOR_PENALTIES.length ? FLOOR_PENALTIES[i] : 0;
+            html += '<span class="floor-penalty">' + pen + '</span>';
+        }
+        html += '</div></div>';
+    });
+    html += '</div>';  // end players-area
+
+    // ── Reasoning — always visible ──────────────────────────────────
+    const evals = stepData.evaluations || [];
+    const stepInfo = stepData.step_data;
+    html += '<div class="reason-area">';
+
+    if (stepInfo) {
+        // Wall tiling step
+        const st = stepInfo;
+        if (st.type === 'place') {
+            const pColor = st.color ? ';color:' + (COLORS[{'blue':0,'yellow':1,'red':2,'black':3,'white':4}[st.color]] || '#888') : '';
+            html += '<div class="reason-box" style="border-left:4px solid #2d5a3d"><strong>Wall tiling:</strong> '
+                + BOT_NAMES[st.player] + ' places <strong>' + st.color + '</strong> on line ' + (st.line + 1)
+                + ' &rarr; <strong style="color:#2d5a3d">+' + st.points + '</strong></div>';
+        } else if (st.type === 'floor') {
+            html += '<div class="reason-box" style="border-left:4px solid #c44"><strong>Floor penalty:</strong> '
+                + BOT_NAMES[st.player] + ' discards floor'
+                + ' &rarr; <strong style="color:#c44">' + st.score_change + '</strong>'
+                + ' (raw: ' + st.penalty + ')</div>';
+        } else if (st.type === 'end_bonuses') {
+            const bn = st.bonuses || [{}, {}];
+            html += '<div class="reason-box" style="border-left:4px solid #d4a84b;background:#fff8e1"><strong>Game Over!</strong></div>';
+            html += '<table class="eval-table" style="margin-top:0.3rem;"><thead><tr>'
+                + '<th>Player</th><th>Rows (+2)</th><th>Cols (+7)</th><th>Colors (+10)</th><th>Bonus</th>'
+                + '</tr></thead><tbody>';
+            [0,1].forEach(function(pi) {
+                const b = bn[pi] || {};
+                const total = (b.rows || 0) * 2 + (b.cols || 0) * 7 + (b.colors || 0) * 10;
+                html += '<tr><td><strong>' + BOT_NAMES[pi] + '</strong></td>'
+                    + '<td>' + (b.rows || 0) + '</td><td>' + (b.cols || 0) + '</td><td>' + (b.colors || 0) + '</td>'
+                    + '<td><strong>' + total + '</strong></td></tr>';
+            });
+            html += '</tbody></table>';
+        } else if (st.type === 'round_end') {
+            html += '<div class="reason-box" style="border-left:4px solid #2d5a3d"><strong>Round ' + (st.round - 1) + ' complete.</strong> Next round starting.</div>';
+        } else {
+            html += '<div class="reason-box"><strong>Wall tiling:</strong> ' + desc + '</div>';
+        }
+    } else if (pipeIdx >= 0) {
+        html += '<div class="reason-box"><strong>Bot decision:</strong> ' + desc.slice(pipeIdx + 3) + '</div>';
+    } else if (evals.length > 0) {
+        html += '<div class="reason-box"><strong>Bot decision:</strong> ' + '</div>';
+    }
+
+    html += '</div>';
+
+    // ── All possible moves table (only for drafting turns) ──────────
+    html += '<div class="eval-area">';
+    if (!stepInfo && evals.length > 0) {
+        html += '<table class="eval-table"><thead><tr>'
+            + '<th>Move</th><th>S</th><th>P</th><th>R</th><th>C</th><th>K</th><th>V</th><th>Completes</th><th>Finishes</th><th></th>'
+            + '</tr></thead><tbody>';
+        evals.forEach(function(e) {
+            const isChosen = e.chosen || false;
+            const moveDesc = "Take " + e.color_name + " from "
+                + (e.source_type === "factory" ? "F" + (e.source_idx + 1) : "center")
+                + " → " + (e.line_idx >= 0 ? "line " + (e.line_idx + 1) : "floor");
+            const rowClass = isChosen ? "chosen" : (e.finishes_game ? "finishes" : "");
+            html += "<tr class=\"" + rowClass + "\">";
+            html += "<td>" + moveDesc + "</td>";
+            html += "<td>" + e.S + "</td>";
+            html += "<td>" + e.P + "</td>";
+            html += "<td>" + e.R + "</td>";
+            html += "<td>" + e.C + "</td>";
+            html += "<td>" + e.K + "</td>";
+            html += "<td><strong>" + (e.V !== undefined ? e.V : e.S - e.P) + "</strong></td>";
+            html += "<td>" + (e.completes ? "Y" : "N") + "</td>";
+            html += "<td>" + (e.finishes_game ? "⚠" : "N") + "</td>";
+            html += "<td>" + (isChosen ? '<span class="chosen-badge">chosen</span>' : "") + "</td>";
+            html += "</tr>";
+        });
+        html += '</tbody></table>';
+    }
+    html += '</div>';  // end eval-area
+
+    html += '</div>';  // end replay-grid
+
+    document.getElementById("board").innerHTML = html;
+}
+
+function goStep(delta) {
+    if (delta === -Infinity) current = 0;
+    else if (delta === Infinity) current = snapshots.length - 1;
+    else current = Math.max(0, Math.min(snapshots.length - 1, current + delta));
+    renderBoard(snapshots[current]);
+}
+
+renderBoard(snapshots[0]);
+</script>
+
+{% endblock %}

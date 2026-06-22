@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Play vs Human</h1>
+
+{% if error %}
+<div class="status-bar waiting" style="margin-bottom:1rem">{{ error }}</div>
+{% endif %}
+
+<div class="play-modes">
+    <div class="card">
+        <h2>Create a Game</h2>
+        <p>Create a new game and share the link with a friend. They'll join as Player 2.</p>
+        <form method="post" action="/play/pvp/create/" class="form" style="margin-top:1rem">
+            {% csrf_token %}
+            <p>You'll create the game as <strong>{{ user.username }}</strong>.</p>
+            <div class="form-group">
+                <label>Seed (optional)</label>
+                <input type="number" name="seed" placeholder="Leave empty for random">
+            </div>
+            <button type="submit" class="btn btn-primary">Create Game</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Join a Game</h2>
+        <p>Enter the game code shared by your opponent.</p>
+        <form method="post" action="/play/pvp/join/code/" class="form" style="margin-top:1rem">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Game Code</label>
+                <input type="text" name="game_code" placeholder="e.g. X7K3A" required maxlength="5" style="text-transform:uppercase;font-family:monospace;font-size:1.2rem;letter-spacing:0.2em;text-align:center">
+            </div>
+            <button type="submit" class="btn btn-primary">Join Game</button>
+        </form>
+        <p style="margin-top:0.5rem;font-size:0.9rem">Ask your opponent for their 5-character game code.</p>
+    </div>
+</div>
+
+<p><a href="/play/">← Back</a></p>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Play Azul</h1>
+
+<div class="play-modes">
+    <div class="card">
+        <h2>vs Bot</h2>
+        <p>Play a game against one of the three AI bots. The bot's moves will be fully logged with evaluation scores, so you can review the replay to see why it chose each move.</p>
+        <a href="/play/bot" class="btn btn-primary">Play vs Bot</a>
+    </div>
+
+    <div class="card">
+        <h2>vs Human</h2>
+        <p>Play against another person over the network. Create a game and share the link with your opponent. Both players see the board live and take turns.</p>
+        <a href="/play/human" class="btn btn-primary">Play vs Human</a>
+    </div>
+</div>
+
+{% if stats and stats.total_player_games > 0 %}
+<hr>
+<h2>Your Games</h2>
+<table class="table sortable">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Player 1</th>
+            <th>Player 2</th>
+            <th>Mode</th>
+            <th>Score P1</th>
+            <th>Score P2</th>
+            <th>Winner</th>
+            <th>Replay</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for g in player_games %}
+        <tr>
+            <td>{{ g.id }}</td>
+            <td>{{ g.player1_name }}</td>
+            <td>{{ g.player2_name|default:"-" }}</td>
+            <td>{% if g.mode == "pve" %}PvE{% else %}PvP{% endif %}</td>
+            <td>{{ g.score1 }}</td>
+            <td>{{ g.score2 }}</td>
+            <td>
+                {% if g.winner == -1 %}
+                Draw
+                {% elif g.winner == 0 %}
+                {{ g.player1_name }}
+                {% else %}
+                {{ g.player2_name|default:"Player 2" }}
+                {% endif %}
+            </td>
+            <td><a href="/play/game/{{ g.id }}/replay" class="btn btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}
