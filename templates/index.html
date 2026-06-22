@@ -1,12 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
 
-<style>
-.tag-running { background:#cce5ff; color:#004085; }
-.tag-done   { background:#d4edda; color:#155724; }
-.tag-failed { background:#f8d7da; color:#721c24; }
-.tag-pending{ background:#e2e3e5; color:#383d41; }
-</style>
 
 <h1>Azul Game Analysis</h1>
 <p class="subtitle">Statistical analysis of Azul bot strategies &mdash; IB DP Math IA</p>
@@ -20,6 +14,12 @@
         <span class="stat-value">{{ stats.total_games }}</span>
         <span class="stat-label">Games Played</span>
     </div>
+    {% if stats.total_player_games and stats.total_player_games > 0 %}
+    <div class="stat-card">
+        <span class="stat-value">{{ stats.total_player_games }}</span>
+        <span class="stat-label">Player Games</span>
+    </div>
+    {% endif %}
     {% if stats.top_matchup %}
     <div class="stat-card wide">
         <span class="stat-label">Most played matchup</span>
@@ -56,7 +56,6 @@
             <tr><td>GreedyBot</td><td>Maximises immediate wall score minus floor penalties</td></tr>
             <tr><td>PlannedBot</td><td>Weighted utility: wall score, row/column progress, colour sets</td></tr>
             <tr><td>RandomBot</td><td>Picks a random target line/colour, takes the largest source</td></tr>
-
         </tbody>
     </table>
 </div>
@@ -77,15 +76,15 @@
             </tr>
         </thead>
         <tbody>
-            {% for sim in simulations[:10] %}
+            {% for sim in simulations %}
             <tr>
                 <td>{{ sim.id }}</td>
                 <td>{{ sim.bot1_name }}</td>
                 <td>{{ sim.bot2_name }}</td>
                 <td>{{ sim.games_completed }} / {{ sim.num_games }}</td>
                 <td><span class="tag tag-{{ sim.status }}">{{ sim.status }}</span></td>
-                <td>{{ sim.created_at[:16] }}</td>
-                <td><a href="/simulations/{{ sim.id }}">View</a></td>
+                <td>{{ sim.created_at|date:"Y-m-d H:i" }}</td>
+                <td><a href="/simulations/{{ sim.id }}" class="btn btn-sm">View</a></td>
             </tr>
             {% endfor %}
         </tbody>

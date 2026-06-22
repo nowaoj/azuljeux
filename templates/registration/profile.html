@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Profile</h1>
+<p class="subtitle">Welcome, <strong>{{ user.username }}</strong></p>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <span class="stat-value">{{ total_games }}</span>
+        <span class="stat-label">Games Played</span>
+    </div>
+    <div class="stat-card win">
+        <span class="stat-value">{{ games_won }}</span>
+        <span class="stat-label">Wins</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ user.email }}</span>
+        <span class="stat-label">Email</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ user.date_joined|date:"M Y" }}</span>
+        <span class="stat-label">Joined</span>
+    </div>
+</div>
+
+<p style="margin-bottom:1.5rem"><a href="{% url 'logout' %}" class="btn btn-primary btn-sm">Logout</a></p>
+
+{% if recent_games %}
+<h2>Recent Games</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Mode</th>
+            <th>Opponent</th>
+            <th>Score</th>
+            <th>Result</th>
+            <th>Date</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for g in recent_games %}
+        <tr>
+            <td>{{ g.id }}</td>
+            <td>{{ g.get_mode_display }}</td>
+            <td>{% if g.player1 == user %}{{ g.player2_name|default:g.bot2_name }}{% else %}{{ g.player1_name }}{% endif %}</td>
+            <td>{{ g.score1 }} – {{ g.score2 }}</td>
+            <td>
+                {% if g.winner == -1 %}<span class="tag tag-draw">Draw</span>
+                {% elif g.winner == 0 and g.player1 == user or g.winner == 1 and g.player2 == user %}<span class="tag tag-bot1">Win</span>
+                {% else %}<span class="tag tag-bot2">Loss</span>
+                {% endif %}
+            </td>
+            <td>{{ g.created_at|date:"d M Y" }}</td>
+            <td><a href="/play/game/{{ g.id }}/replay" class="btn btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">No games played yet. <a href="/play">Play a game</a> to get started.</p>
+{% endif %}
+{% endblock %}

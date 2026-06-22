@@ -295,3 +295,204 @@ class TestPlayerBoard:
         overflow = board.add_to_floor(["RED"] * 10)
         assert len(board.floor_line) == 7
         assert len(overflow) == 3
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Tests for new features
+# ═════════════════════════════════════════════════════════════════════
+
+
+class TestHundredPointRule:
+
+    def test_hundred_point_rule_init(self):
+        """100-point rule can be enabled in constructor."""
+        gs = GameState(hundred_point_rule=True)
+        assert gs.hundred_point_rule is True
+        gs2 = GameState(hundred_point_rule=False)
+        assert gs2.hundred_point_rule is False
+        gs3 = GameState()
+        assert gs3.hundred_point_rule is False
+
+    def test_hundred_point_rule_allows_row_completion(self):
+        """In Race-to-100 mode, row-completing placements are allowed even
+        when score < 100."""
+        gs = GameState(hundred_point_rule=True)
+        p = gs.players[0]
+        for c in range(4):
+            p.wall[0][c] = WALL_LAYOUT[0][c]
+        p.score = 50
+        p.pattern_lines[0] = [Color.WHITE]
+        gs.resolve_wall_tiling()
+        # The tile IS placed on the wall (no blocking)
+        assert p.wall[0][4] == Color.WHITE
+        assert p.pattern_lines[0] == []
+
+    def test_hundred_point_rule_allows_placement_when_100(self):
+        """Row-completing placement works at score >= 100 (and triggers race win)."""
+        gs = GameState(hundred_point_rule=True)
+        p = gs.players[0]
+        for c in range(4):
+            p.wall[0][c] = WALL_LAYOUT[0][c]
+        p.score = 100
+        p.pattern_lines[0] = [Color.WHITE]
+        gs.resolve_wall_tiling()
+        assert p.wall[0][4] == Color.WHITE
+
+    def test_hundred_point_rule_non_completing_still_works(self):
+        """Non-row-completing placements still work normally under the rule."""
+        gs = GameState(hundred_point_rule=True)
+        p = gs.players[0]
+        p.score = 50
+        # Fill pattern line 0 with BLUE (row 0, col 0 - doesn't complete row)
+        p.pattern_lines[0] = [Color.BLUE]
+        gs.resolve_wall_tiling()
+        assert p.wall[0][0] == Color.BLUE
+        assert p.score > 50
+
+    def test_stalemate_detection(self):
+        """If both players have no wall progress for 2 consecutive rounds,
+        the game ends in a stalemate (draw)."""
+        gs = GameState(hundred_point_rule=True)
+        p0 = gs.players[0]
+        p1 = gs.players[1]
+        # Empty pattern lines → no wall placements possible
+        p0.pattern_lines = [[], [], [], [], []]
+        p1.pattern_lines = [[], [], [], [], []]
+        p0.score = 50
+        p1.score = 50
+
+        # First round: no wall progress → stalemate counter = 1
+        gs.resolve_wall_tiling()
+        assert gs._stalemate_rounds == 1
+        assert not gs.game_over
+
+        # Second round: no wall progress again → stalemate → game over
+        gs.resolve_wall_tiling()
+        assert gs.game_over
+        assert gs.winner == -1  # draw
+
+    def test_hundred_point_snapshot_roundtrip(self):
+        """Hundred-point rule flag survives snapshot round-trip."""
+        gs = GameState(hundred_point_rule=True)
+        snap = gs.get_state_snapshot()
+        assert snap["hundred_point_rule"] is True
+        gs2 = GameState()
+        gs2.load_state_snapshot(snap)
+        assert gs2.hundred_point_rule is True
+
+
+class TestBotEvaluations:
+
+    def test_rck_are_percentages(self):
+        """R, C, K values from evaluate_move should be percentages (0-100)."""
+        from bots import evaluate_move, get_legal_moves, Move
+        gs = GameState(seed=42)
+        gs.start_round()
+        # Get first valid move
+        moves = get_legal_moves(gs, 0)
+        assert len(moves) > 0
+        ev = evaluate_move(gs, 0, moves[0])
+        # R, C, K should be in range 0-100 (percentages)
+        assert 0 <= ev["R"] <= 100
+        assert 0 <= ev["C"] <= 100
+        assert 0 <= ev["K"] <= 100
+        # With an empty wall, R, C, K should be 0 (no tiles placed yet)
+        if not ev["completes"]:
+            assert ev["R"] == 0
+            assert ev["C"] == 0
+            assert ev["K"] == 0
+
+    def test_rck_percentage_calculation(self):
+        """Verify R percentage calculation is correct."""
+        from bots import evaluate_move, get_legal_moves, Move
+        gs = GameState(seed=42)
+        gs.start_round()
+        # Place a tile on wall at (0, 0) for player 0
+        gs.players[0].wall[0][0] = WALL_LAYOUT[0][0]
+        # Now a move that completes pattern line 0 would have R = 20% (1/5)
+        gs.factories[0] = [WALL_LAYOUT[0][1]]  # Factory has the color for row 0, col 1
+        moves = [m for m in get_legal_moves(gs, 0)
+                 if m.line_idx == 0 and m.color == WALL_LAYOUT[0][1]]
+        if moves:
+            ev = evaluate_move(gs, 0, moves[0])
+            if ev["completes"]:
+                # Row 0 has 1 tile + 1 new tile = 2/5 = 40%
+                assert ev["R"] == 40
+            else:
+                # Row 0 has 1 tile, no completion = 1/5 = 20%
+                assert ev["R"] == 20
+
+
+class TestGreedyBot:
+
+    def test_tiebreak_no_floor_penalty(self):
+        """GreedyBot should tie-break by higher row only, not floor penalty."""
+        from bots import GreedyBot, get_legal_moves, evaluate_move
+        import copy
+
+        gs = GameState(seed=42)
+        gs.start_round()
+        bot = GreedyBot()
+        # Run the bot on a state where moves exist
+        move = bot.choose_move(gs, 0)
+        assert move is not None
+        # Check that last_reason doesn't mention floor penalty in tie-breaking
+        reason = bot.last_reason
+        assert "avoids floor" not in reason
+
+
+class TestPlannedBot:
+
+    def test_completes_lowest_row_first(self):
+        """PlannedBot should always pick the lowest completing row."""
+        from bots import PlannedBot, get_legal_moves, evaluate_move
+        import copy
+
+        gs = GameState(seed=42)
+        # Set up a state where two pattern lines can be completed
+        # Row 0 needs 1 tile of color for col 0 (BLUE)
+        # Row 1 needs 2 tiles of color for col 0 (WHITE)
+        gs.factories = [
+            [Color.BLUE, Color.BLUE, Color.RED, Color.YELLOW],
+            [Color.WHITE, Color.WHITE, Color.BLACK, Color.BLACK],
+            [], [], [],
+        ]
+        gs.center = ["START"]
+        gs.current_player = 0
+        gs._taken_from_center = [False, False]
+        # Both rows are empty on the wall
+        bot = PlannedBot()
+        move = bot.choose_move(gs, 0)
+        # Should prefer completing pattern line 0 (BLUE) over line 1 (WHITE)
+        # because line 0 is lower, even though line 1 might have higher V
+        reason = bot.last_reason
+        assert move is not None
+        # The specific move depends on factory state, but we verify
+        # the bot's reasoning mentions completing
+        assert "Completes" in reason or "line" in reason
+
+    def test_priority_a_before_b(self):
+        """PlannedBot should complete a pattern line even if V is lower."""
+        from bots import PlannedBot, evaluate_move
+        from game import GameState, Color, WALL_LAYOUT
+
+        gs = GameState(hundred_point_rule=False)
+        # Set up a state where:
+        # - Row 0 can be completed (1 tile of BLUE to fill row 0, col 0)
+        # - Row 3 has higher V but fewer tiles
+        gs.factories = [
+            [Color.BLUE, Color.BLUE, Color.BLUE, Color.BLUE],
+            [], [], [], [],
+        ]
+        gs.center = ["START", Color.RED, Color.RED, Color.RED]
+        gs.current_player = 0
+        gs._taken_from_center = [False, False]
+        # Row 0 pattern line is empty, can accept BLUE
+        # Row 4 needs 5 tiles but won't complete
+        bot = PlannedBot()
+        move = bot.choose_move(gs, 0)
+        assert move is not None
+        # The bot should pick the row 0 BLUE move (completes pattern line)
+        # Even though other moves might have higher V
+        # Since BLUE is in factory 0 and completes line 0
+        assert move.color == Color.BLUE

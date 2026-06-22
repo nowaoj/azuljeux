@@ -1,50 +1,6 @@
 {% extends "base.html" %}
+{% load azul_extras %}
 {% block content %}
-
-<style>
-.bot-section { margin: 2.5rem 0; }
-.bot-card { background: white; border-radius: 10px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; border-left: 4px solid #2d5a3d; }
-.bot-card.greedy { border-left-color: #CC3333; }
-.bot-card.planned { border-left-color: #0066CC; }
-.bot-card.random { border-left-color: #FFAA00; }
-.formula { font-family: 'Courier New', monospace; background: #f5f0eb; padding: 0.75rem 1rem; border-radius: 6px; margin: 0.75rem 0; display: inline-block; font-size: 1.05rem; }
-.code-ref { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 0.75rem 1rem; font-family: 'Courier New', monospace; font-size: 0.85rem; overflow-x: auto; margin: 0.75rem 0; line-height: 1.5; }
-.code-ref .ln { color: #6c7086; user-select: none; margin-right: 1rem; }
-.code-ref .kw { color: #cba6f7; }
-.code-ref .cm { color: #6c7086; }
-.code-ref .str { color: #a6e3a1; }
-.code-ref .num { color: #fab387; }
-.code-ref .fn { color: #89b4fa; }
-.code-ref .hl { background: rgba(250, 179, 135, 0.1); display: block; }
-.priority-list { list-style: none; padding: 0; margin: 0.75rem 0; }
-.priority-list li { padding: 0.5rem 0; border-bottom: 1px solid #f0eee8; display: flex; align-items: center; gap: 0.6rem; font-size: 0.95rem; }
-.priority-list li:last-child { border-bottom: none; }
-.priority-num { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #2d5a3d; color: white; font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
-.priority-list .arrow { color: #999; margin: 0 0.25rem; }
-.example-board { background: white; border-radius: 10px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
-@media (max-width: 700px) { .info-grid { grid-template-columns: 1fr; } }
-.factory-pill { display: inline-flex; align-items: center; gap: 0.4rem; background: #f5f0eb; border-radius: 8px; padding: 0.35rem 0.6rem; margin: 0.2rem; }
-.tile-dot { display: inline-block; width: 22px; height: 22px; border-radius: 4px; }
-.tile-dot.sm { width: 18px; height: 18px; }
-.pattern-line-row { display: flex; align-items: center; gap: 3px; margin: 3px 0; }
-.pattern-line-row .lbl { font-size: 0.75rem; color: #888; width: 32px; flex-shrink: 0; }
-.wall-grid { display: grid; grid-template-columns: repeat(5, 22px); gap: 2px; margin: 0.4rem 0; }
-.wall-cell { width: 22px; height: 22px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.5rem; font-weight: 700; color: rgba(0,0,0,0.3); }
-.wall-cell.empty { opacity: 0.25; }
-.wall-cell.placed { border: 2px solid #333; }
-.move-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 0.75rem 0; }
-.move-table th { background: #2d5a3d; color: white; padding: 0.4rem 0.5rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
-.move-table th:first-child { text-align: left; }
-.move-table td { padding: 0.35rem 0.5rem; text-align: center; border-bottom: 1px solid #f0eee8; }
-.move-table td:first-child { text-align: left; }
-.move-table tr.top { background: #e8f5e9; font-weight: 600; }
-.chosen-badge { display: inline-block; background: #2d5a3d; color: white; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; font-weight: 700; }
-.yes-badge { color: #2d5a3d; font-weight: 600; }
-.no-badge { color: #ccc; }
-.ia-suggestion { background: #fff8e1; border-radius: 8px; padding: 1rem; margin: 0.75rem 0; border-left: 3px solid #ffaa00; }
-.ia-suggestion strong { color: #8d6e00; }
-</style>
 
 <h1>Bot Strategies — Detailed Guide</h1>
 <p class="subtitle">Decision logic, scoring, tie-breaking, and a worked example for every bot</p>
@@ -84,7 +40,7 @@
             {% for t in pl.tiles %}
             <span class="tile-dot sm" style="background:{{ t.hex }};border:1px solid rgba(0,0,0,0.12)"></span>
             {% endfor %}
-            {% for _ in range(pl.empty) %}
+            {% for _ in pl.empty|times %}
             <span class="tile-dot sm" style="background:#e8e8e8;border:1px dashed #ccc"></span>
             {% endfor %}
         </div>
@@ -92,10 +48,10 @@
 
         <div style="font-size:0.85rem;font-weight:600;margin:0.5rem 0 0.3rem">Wall (target colours):</div>
         <div class="wall-grid">
-            {% for r in range(5) %}
-                {% for c in range(5) %}
-                <div class="wall-cell {% if wall[r][c].placed %}placed{% else %}empty{% endif %}" style="background:{{ wall[r][c].hex }}">
-                    {{ wall[r][c].target[0]|upper }}
+            {% for row in wall %}
+                {% for cell in row %}
+                <div class="wall-cell {% if cell.placed %}placed{% else %}empty{% endif %}" style="background:{{ cell.hex }}">
+                    {{ cell.target.0|upper }}
                 </div>
                 {% endfor %}
             {% endfor %}
@@ -115,7 +71,7 @@
 <div class="bot-section">
 <h2>GreedyBot</h2>
 
-<div class="bot-card greedy">
+<div class="bot-card">
     <h3>Decision rule</h3>
     <p>Score every legal move by immediate net value. Pick the best.<br>
     <strong>Never complete a wall row (ending the game) unless currently winning.</strong></p>
@@ -131,38 +87,12 @@
     <ol class="priority-list">
         <li><span class="priority-num">1</span> <strong>Highest V</strong> &mdash; best immediate net gain</li>
         <li><span class="priority-num">2</span> <strong>Highest pattern line</strong> &mdash; fill higher rows first (they need more tiles)</li>
-        <li><span class="priority-num">3</span> <strong>Avoid floor</strong> &mdash; among equal V, prefer moves with no floor penalty</li>
-        <li><span class="priority-num">4</span> <strong>Random</strong> &mdash; if still tied after all criteria, pick uniformly at random</li>
+        <li><span class="priority-num">3</span> <strong>Random</strong> &mdash; if still tied after V and row, pick uniformly at random</li>
     </ol>
-
-    <h4>Where the logic lives in the code</h4>
-    <div class="code-ref"><span class="cm"># bots.py – GreedyBot.choose_move (line 197)</span>
-<span class="hl">197: <span class="kw">def</span> <span class="fn">choose_move</span>(self, game, player_idx):</span>
-198:     moves = get_legal_moves(game, player_idx)
-199:     <span class="kw">if</span> <span class="kw">not</span> moves: <span class="kw">return</span> <span class="kw">None</span>
-200:
-<span class="cm">      # ── "Only complete a wall row if winning" ──</span>
-201:     is_winning = game.players[player_idx].score <span class="op">></span> game.players[<span class="num">1</span> <span class="op">-</span> player_idx].score
-202:     <span class="kw">if</span> <span class="kw">not</span> is_winning:
-203:         moves = [m <span class="kw">for</span> m <span class="kw">in</span> moves <span class="kw">if</span> <span class="kw">not</span> <span class="fn">would_complete_wall_row</span>(game, player_idx, m)]
-204:         <span class="kw">if</span> <span class="kw">not</span> moves: <span class="kw">return</span> <span class="kw">None</span>
-205:
-<span class="cm">      # ── Score each move: V = S − P ──</span>
-207:     <span class="kw">for</span> move <span class="kw">in</span> moves:
-208:         S, P, _, _, _, _ = <span class="fn">evaluate_move</span>(game, player_idx, move)
-209:         V = S <span class="op">-</span> P
-210:         row_key = move.line_idx <span class="kw">if</span> move.line_idx <span class="op">>=</span> <span class="num">0</span> <span class="kw">else</span> <span class="op">-</span><span class="num">999</span>
-211:         avoids_floor = <span class="num">1</span> <span class="kw">if</span> P <span class="op">==</span> <span class="num">0</span> <span class="kw">else</span> <span class="num">0</span>
-212:         scored.append((<span class="op">-</span>V, <span class="op">-</span>row_key, <span class="op">-</span>avoids_floor, move))
-213:
-<span class="cm">      # ── Sort: V ↓ → row ↓ → avoid floor → random ──</span>
-214:     scored.sort(key=<span class="kw">lambda</span> x: (x[<span class="num">0</span>], x[<span class="num">1</span>], x[<span class="num">2</span>]))
-215:     best = (scored[<span class="num">0</span>][<span class="num">0</span>], scored[<span class="num">0</span>][<span class="num">1</span>], scored[<span class="num">0</span>][<span class="num">2</span>])
-216:     tied = [s <span class="kw">for</span> s <span class="kw">in</span> scored <span class="kw">if</span> (s[<span class="num">0</span>], s[<span class="num">1</span>], s[<span class="num">2</span>]) <span class="op">==</span> best]
-217:     <span class="kw">return</span> random.choice(tied)[<span class="num">3</span>]</div>
+    <p style="font-size:0.85rem;color:#555;margin-top:0.3rem">Floor penalties no longer influence tie-breaking.</p>
 
     <div class="ia-suggestion">
-        <strong>📊 Math IA idea:</strong> Compare GreedyBot's win rate against PlannedBot.
+        <strong>Math IA idea:</strong> Compare GreedyBot's win rate against PlannedBot.
         Does short-term greed beat long-term planning? Use a two-proportion z-test.
     </div>
 </div>
@@ -182,26 +112,26 @@
     </thead>
     <tbody>
         {% for m in greedy_top %}
-        <tr class="{% if loop.first %}top{% endif %}">
+        <tr class="{% if forloop.first %}top{% endif %}">
             <td><span class="tile-dot sm" style="background:{{ m.color_hex }};display:inline-block;vertical-align:middle;margin-right:4px"></span>{{ m.move }}</td>
             <td>{{ m.S }}</td>
             <td>{{ m.P }}</td>
             <td><strong>{{ m.V_greedy }}</strong></td>
-            <td>{{ m.line if m.line >= 0 else 'floor' }}</td>
+            <td>{% if m.line >= 0 %}{{ m.line }}{% else %}floor{% endif %}</td>
             <td>{% if m.P == 0 %}<span class="yes-badge">yes</span>{% else %}<span class="no-badge">no</span>{% endif %}</td>
-            <td>{% if loop.first %}<span class="chosen-badge">chosen</span>{% endif %}</td>
+            <td>{% if forloop.first %}<span class="chosen-badge">chosen</span>{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
 <p style="font-size:0.85rem;color:#666">
-    <strong>Why this move?</strong> GreedyBot picks <strong>{{ greedy_top[0].move }}</strong> because
-    V = {{ greedy_top[0].V_greedy }} is the highest. {% if greedy_top[0].S > 0 %}It completes a pattern line and
-    scores S={{ greedy_top[0].S }} points on the wall with no floor penalty.{% else %}
+    <strong>Why this move?</strong> GreedyBot picks <strong>{{ greedy_top.0.move }}</strong> because
+    V = {{ greedy_top.0.V_greedy }} is the highest. {% if greedy_top.0.S > 0 %}It completes a pattern line and
+    scores S={{ greedy_top.0.S }} points on the wall with no floor penalty.{% else %}
     No move completes a wall row here, so it simply maximises V.{% endif %}
-    {% if greedy_top|length > 1 and greedy_top[1].V_greedy == greedy_top[0].V_greedy %}
-    If tied, it prefers the higher row (line {{ greedy_top[0].line }} over line {{ greedy_top[1].line }}).
+    {% if greedy_top|length > 1 and greedy_top.1.V_greedy == greedy_top.0.V_greedy %}
+    If tied, it prefers the higher row (line {{ greedy_top.0.line }} over line {{ greedy_top.1.line }}).
     {% endif %}
 </p>
 </div>
@@ -211,7 +141,7 @@
 <div class="bot-section">
 <h2>PlannedBot</h2>
 
-<div class="bot-card planned">
+<div class="bot-card">
     <h3>Decision rule</h3>
     <p>Score every legal move with a weighted utility function that looks beyond the immediate turn.<br>
     <strong>Never complete a wall row (ending the game) unless currently winning.</strong></p>
@@ -221,9 +151,9 @@
     <table style="margin:0.75rem 0;font-size:0.9rem">
         <tr><td style="width:45px;font-weight:700;color:#06c">S</td><td>Immediate wall points (same as GreedyBot).</td></tr>
         <tr><td style="font-weight:700;color:#06c">P</td><td>Floor penalty (same as GreedyBot).</td></tr>
-        <tr><td style="font-weight:700;color:#06c">R</td><td>Tiles in the target <strong>row</strong> after placement (0–5). Progress toward a complete row bonus (+2 pts). Weight <strong>W<sub>r</sub> = 1</strong>.</td></tr>
-        <tr><td style="font-weight:700;color:#06c">C</td><td>Tiles in the target <strong>column</strong> after placement (0–5). Progress toward a complete column bonus (+7 pts). Weight <strong>W<sub>c</sub> = 3</strong>.</td></tr>
-        <tr><td style="font-weight:700;color:#06c">K</td><td>Tiles of the target <strong>colour</strong> on the wall after placement (0–5). Progress toward a full colour-set bonus (+10 pts). Weight <strong>W<sub>k</sub> = 5</strong>.</td></tr>
+        <tr><td style="font-weight:700;color:#06c">R</td><td>Tiles in the target <strong>row</strong> after placement (0%–100%). Progress toward a complete row bonus (+2 pts). Weight <strong>W<sub>r</sub> = 1</strong>.</td></tr>
+        <tr><td style="font-weight:700;color:#06c">C</td><td>Tiles in the target <strong>column</strong> after placement (0%–100%). Progress toward a complete column bonus (+7 pts). Weight <strong>W<sub>c</sub> = 3</strong>.</td></tr>
+        <tr><td style="font-weight:700;color:#06c">K</td><td>Tiles of the target <strong>colour</strong> on the wall after placement (0%–100%). Progress toward a full colour-set bonus (+10 pts). Weight <strong>W<sub>k</sub> = 5</strong>.</td></tr>
     </table>
 
     <p style="font-size:0.85rem;color:#555">
@@ -231,41 +161,15 @@
         Colour-set progress is valued most because it's the hardest bonus to achieve.
     </p>
 
-    <h4>Priority order (tie-breaking)</h4>
+    <h4>Priority order</h4>
     <ol class="priority-list">
-        <li><span class="priority-num">1</span> <strong>Highest V</strong> &mdash; maximise weighted utility</li>
-        <li><span class="priority-num">2</span> <strong>Finish a row</strong> &mdash; prefer moves that fill a pattern line (tile goes to wall)</li>
-        <li><span class="priority-num">3</span> <strong>Lowest pattern line</strong> &mdash; fill smaller rows first (they're easier to complete)</li>
-        <li><span class="priority-num">4</span> <strong>Deterministic</strong> &mdash; first in sorted order (no randomness)</li>
+        <li><span class="priority-num">A</span> <strong>Complete any pattern line</strong> &mdash; if any move fills a pattern line, pick the <strong>lowest row</strong> (smallest line index). V is ignored.</li>
+        <li><span class="priority-num">B</span> <strong>Highest V</strong> &mdash; otherwise maximise weighted utility; tie-break: lowest row.</li>
+        <li><span class="priority-num">C</span> <strong>Deterministic</strong> &mdash; first in sorted order (no randomness).</li>
     </ol>
 
-    <h4>Where the logic lives in the code</h4>
-    <div class="code-ref"><span class="cm"># bots.py – PlannedBot.choose_move (line 235)</span>
-<span class="hl">235: <span class="kw">def</span> <span class="fn">choose_move</span>(self, game, player_idx):</span>
-236:     moves = get_legal_moves(game, player_idx)
-237:     <span class="kw">if</span> <span class="kw">not</span> moves: <span class="kw">return</span> <span class="kw">None</span>
-238:
-<span class="cm">      # ── "Only complete a wall row if winning" (same guard) ──</span>
-239:     is_winning = game.players[player_idx].score <span class="op">></span> game.players[<span class="num">1</span> <span class="op">-</span> player_idx].score
-240:     <span class="kw">if</span> <span class="kw">not</span> is_winning:
-241:         moves = [m <span class="kw">for</span> m <span class="kw">in</span> moves <span class="kw">if</span> <span class="kw">not</span> <span class="fn">would_complete_wall_row</span>(game, player_idx, m)]
-242:         <span class="kw">if</span> <span class="kw">not</span> moves: <span class="kw">return</span> <span class="kw">None</span>
-243:
-<span class="cm">      # ── Score each move: V = S − P + R·Wr + C·Wc + K·Wk ──</span>
-245:     <span class="kw">for</span> move <span class="kw">in</span> moves:
-246:         S, P, R, C, K, completes = <span class="fn">evaluate_move</span>(game, player_idx, move)
-247:         V = S <span class="op">-</span> P <span class="op">+</span> R <span class="op">*</span> self.Wr <span class="op">+</span> C <span class="op">*</span> self.Wc <span class="op">+</span> K <span class="op">*</span> self.Wk
-248:         row_key = move.line_idx <span class="kw">if</span> move.line_idx <span class="op">>=</span> <span class="num">0</span> <span class="kw">else</span> <span class="num">999</span>
-249:         scored.append((<span class="op">-</span>V, <span class="num">0</span> <span class="kw">if</span> completes <span class="kw">else</span> <span class="num">1</span>, row_key, move))
-250:
-<span class="cm">      # ── Sort: V ↓ → completes line → lowest row → deterministic ──</span>
-252:     scored.sort(key=<span class="kw">lambda</span> x: (x[<span class="num">0</span>], x[<span class="num">1</span>], x[<span class="num">2</span>]))
-253:     best = (scored[<span class="num">0</span>][<span class="num">0</span>], scored[<span class="num">0</span>][<span class="num">1</span>], scored[<span class="num">0</span>][<span class="num">2</span>])
-254:     tied = [s <span class="kw">for</span> s <span class="kw">in</span> scored <span class="kw">if</span> (s[<span class="num">0</span>], s[<span class="num">1</span>], s[<span class="num">2</span>]) <span class="op">==</span> best]
-255:     <span class="kw">return</span> tied[<span class="num">0</span>][<span class="num">3</span>]</div>
-
     <div class="ia-suggestion">
-        <strong>📊 Math IA idea:</strong> Perform sensitivity analysis on the weights (Wr, Wc, Wk).
+        <strong>Math IA idea:</strong> Perform sensitivity analysis on the weights (Wr, Wc, Wk).
         Run PlannedBot with different weight combinations and measure how win rate changes.
         This tests the robustness of the weighting scheme.
     </div>
@@ -288,7 +192,7 @@
     </thead>
     <tbody>
         {% for m in planned_top %}
-        <tr class="{% if loop.first %}top{% endif %}">
+        <tr class="{% if forloop.first %}top{% endif %}">
             <td><span class="tile-dot sm" style="background:{{ m.color_hex }};display:inline-block;vertical-align:middle;margin-right:4px"></span>{{ m.move }}</td>
             <td>{{ m.S }}</td>
             <td>{{ m.P }}</td>
@@ -297,18 +201,17 @@
             <td>{{ m.K }}</td>
             <td><strong>{{ m.V_planned }}</strong></td>
             <td>{% if m.completes %}<span class="yes-badge">Y</span>{% else %}<span class="no-badge">N</span>{% endif %}</td>
-            <td>{% if loop.first %}<span class="chosen-badge">chosen</span>{% endif %}</td>
+            <td>{% if forloop.first %}<span class="chosen-badge">chosen</span>{% endif %}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
 <p style="font-size:0.85rem;color:#666">
-    <strong>Why this move?</strong> PlannedBot picks <strong>{{ planned_top[0].move }}</strong> because
-    its utility V = {{ planned_top[0].V_planned }} is the highest, combining immediate points (S − P = {{ planned_top[0].S }} − {{ planned_top[0].P }})
+    <strong>Why this move?</strong> PlannedBot picks <strong>{{ planned_top.0.move }}</strong> because
+    its utility V = {{ planned_top.0.V_planned }} is the highest, combining immediate points (S − P = {{ planned_top.0.S }} − {{ planned_top.0.P }})
     with progress toward end-game bonuses (R·1 + C·3 + K·5
-    = {{ planned_top[0].R }}·1 + {{ planned_top[0].C }}·3 + {{ planned_top[0].K }}·5
-    = {{ planned_top[0].R + planned_top[0].C * 3 + planned_top[0].K * 5 }}).
+    = {{ planned_top.0.R }}·1 + {{ planned_top.0.C }}·3 + {{ planned_top.0.K }}·5).
 </p>
 </div>
 
@@ -317,7 +220,7 @@
 <div class="bot-section">
 <h2>RandomBot</h2>
 
-<div class="bot-card random">
+<div class="bot-card">
     <h3>Decision rule</h3>
     <p><strong>Never complete a wall row</strong> (always filter out moves that would end the game).<br>
     Then pick uniformly at random from all remaining legal moves.</p>
@@ -346,7 +249,7 @@
 270:     <span class="kw">return</span> random.choice(moves)</div>
 
     <div class="ia-suggestion">
-        <strong>📊 Math IA idea:</strong> RandomBot serves as a baseline (null model).
+        <strong>Math IA idea:</strong> RandomBot serves as a baseline (null model).
         Test whether GreedyBot and PlannedBot have statistically significantly
         higher win rates than RandomBot. Use a chi-squared goodness-of-fit test.
     </div>
@@ -372,7 +275,7 @@
         </tr>
     </thead>
     <tbody>
-        {% for m in all_moves | sort(attribute='V_planned', reverse=True) %}
+        {% for m in all_moves %}
         <tr>
             <td><span class="tile-dot sm" style="background:{{ m.color_hex }};display:inline-block;vertical-align:middle;margin-right:4px"></span>{{ m.move }}</td>
             <td>{{ m.S }}</td>

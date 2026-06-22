@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 import random
 from typing import NamedTuple
 
-from game import Color, FLOOR_PENALTIES, WALL_LAYOUT, GameState
+from game import Color, FLOOR_PENALTIES, WALL_LAYOUT, GameState, COLOR_NAMES
 
 
 # ── Move type ─────────────────────────────────────────────────────────────────
@@ -188,23 +188,24 @@ def evaluate_move(game: GameState, player_idx: int,
             if wall_col >= 0 and player.wall[move.line_idx][wall_col] is None:
                 S = _score_placement_on_wall(player.wall, move.line_idx, wall_col)
 
-    # ── Row / column / colour progress ───────────────────────────────────
+    # ── Row / column / colour progress (as percentages 0–100) ────────────
     wall_col = _wall_column(move.line_idx, move.color) if move.line_idx >= 0 else -1
     if move.line_idx >= 0 and wall_col >= 0:
         row_tiles = sum(1 for c in range(5)
                         if player.wall[move.line_idx][c] is not None)
-        R = row_tiles + (1 if completes else 0)
+        R = round((row_tiles + (1 if completes else 0)) / 5 * 100)
         col_tiles = sum(1 for r in range(5)
                         if player.wall[r][wall_col] is not None)
-        C = col_tiles + (1 if completes else 0)
+        C = round((col_tiles + (1 if completes else 0)) / 5 * 100)
     else:
         R = 0
         C = 0
 
-    K = sum(1 for r in range(5) for c in range(5)
-            if player.wall[r][c] == move.color)
+    raw_K = sum(1 for r in range(5) for c in range(5)
+                if player.wall[r][c] == move.color)
     if completes:
-        K += 1
+        raw_K += 1
+    K = round(raw_K / 5 * 100)
 
     # ── Would this finish the game? ──────────────────────────────────────
     finishes_game = _would_complete_wall_row(game, player_idx, move)
@@ -296,8 +297,8 @@ class GreedyBot(Bot):
       4. Pick the move with the highest V.
          Tie-breaks (in order):
            a. Higher pattern line (fill big rows first — more tiles needed).
-           b. Avoid floor penalty (P == 0).
-           c. Random among remaining ties.
+           b. Random among remaining ties.
+         Floor penalties no longer influence tie-breaking.
     """
 
     def choose_move(self, game: GameState, player_idx: int) -> Move | None:
@@ -336,39 +337,32 @@ class GreedyBot(Bot):
         for e in evals:
             e["V"] = e["S"] - e["P"]
 
-        # Sort: V descending → row descending → avoid floor → (random at end)
+        # Sort: V descending → row descending → (random at end)
         def sort_key(e):
             row = e["move"].line_idx
             row_key = row if row >= 0 else -999
-            return (-e["V"], -row_key, -(1 if e["P"] == 0 else 0))
+            return (-e["V"], -row_key)
 
         evals.sort(key=sort_key)
         best_val = evals[0]["V"]
         best_row = evals[0]["move"].line_idx
-        best_floor = (evals[0]["P"] == 0)
 
-        # Find all tied by the first 3 criteria
-
+        # Find all tied by V and row
         tied = [e for e in evals
                 if e["V"] == best_val
-                and e["move"].line_idx == best_row
-                and (e["P"] == 0) == best_floor]
+                and e["move"].line_idx == best_row]
 
         chosen = random.choice(tied)
 
         # ── Build reason ─────────────────────────────────────────────────
         reason_parts.append(f"V={chosen['V']} (highest)")
         if len(tied) > 1:
-            # Same V, same row, same floor-avoid → random tie-break
             reason_parts.append("random among tied")
         else:
-            # Check if there were ties at each level
             same_v = [e for e in evals if e["V"] == best_val]
             if len(same_v) > 1:
                 if any(e["move"].line_idx != best_row for e in same_v):
                     reason_parts.append(f"row tie-break: line {best_row}")
-                if any((e["P"] == 0) != best_floor for e in same_v):
-                    reason_parts.append("avoids floor penalty")
 
         self.last_reason = ", ".join(reason_parts)
         self.last_evaluations = evals
@@ -391,12 +385,11 @@ class PlannedBot(Bot):
     Decision rule:
       1. Generate all legal moves.
       2. Remove moves that would complete a wall row UNLESS winning.
-      3. Score: V = S − P + R·Wr + C·Wc + K·Wk.
-      4. Pick highest V.
-         Tie-breaks:
-           a. Prefer moves that complete a pattern line (tile → wall).
-           b. Lowest pattern line (fill small rows first — easier).
-           c. Deterministic (first in sorted order).
+      3. Priority A: If any move completes a pattern line, pick the
+         lowest row (smallest line_idx) among those moves — V is ignored.
+      4. Priority B: If no move completes a pattern line, pick highest V.
+         Tie-breaker: lowest row (smallest line_idx).
+      5. Deterministic within each priority.
     """
 
     def __init__(self, Wr: int = WR, Wc: int = WC, Wk: int = WK):
@@ -444,16 +437,37 @@ class PlannedBot(Bot):
                       + e["C"] * self.Wc
                       + e["K"] * self.Wk)
 
-        # Sort: V descending → completes first → lowest row → deterministic
+        # ── Priority A: Complete a pattern line (lowest row first) ───────
+        completing = [e for e in evals if e["completes"]]
+        if completing:
+            # Among completing moves, pick lowest row (smallest line_idx)
+            completing.sort(key=lambda e: e["move"].line_idx)
+            chosen = completing[0]
+            reason_parts.append(
+                f"Completes line {chosen['move'].line_idx + 1} (lowest completing row)")
+            # Also show the V for info
+            formula = (f"V=S-P+R·{self.Wr}+C·{self.Wc}+K·{self.Wk}="
+                       f"{chosen['S']}-{chosen['P']}+"
+                       f"{chosen['R']}·{self.Wr}+"
+                       f"{chosen['C']}·{self.Wc}+"
+                       f"{chosen['K']}·{self.Wk}="
+                       f"{chosen['V']}")
+            reason_parts.append(formula)
+            self.last_reason = "; ".join(reason_parts)
+            self.last_evaluations = evals
+            return chosen["move"]
+
+        # ── Priority B: No completing move — highest V, lowest row ──────
+        # Sort: V descending → lowest row → deterministic
         def sort_key(e):
             row = e["move"].line_idx
             row_key = row if row >= 0 else 999
-            return (-e["V"], 0 if e["completes"] else 1, row_key)
+            return (-e["V"], row_key)
 
         evals.sort(key=sort_key)
+        # Tie-break: same V → lowest row
         tied = [e for e in evals
                 if e["V"] == evals[0]["V"]
-                and e["completes"] == evals[0]["completes"]
                 and e["move"].line_idx == evals[0]["move"].line_idx]
         chosen = tied[0]
 
@@ -465,14 +479,9 @@ class PlannedBot(Bot):
                    f"{chosen['K']}·{self.Wk}="
                    f"{chosen['V']}")
         reason_parts.append(formula)
-        if chosen["completes"]:
-            reason_parts.append("completes pattern line (priority 2)")
 
-        # Tie-break info
         same_v = [e for e in evals if e["V"] == chosen["V"]]
         if len(same_v) > 1:
-            if any(e["completes"] != chosen["completes"] for e in same_v):
-                reason_parts.append("prefers completing row")
             if any(e["move"].line_idx != chosen["move"].line_idx
                    for e in same_v):
                 reason_parts.append(
@@ -532,3 +541,52 @@ class RandomBot(Bot):
         self.last_reason = "; ".join(reason_parts)
         self.last_evaluations = evals
         return chosen["move"]
+
+
+# ── Helpers for interactive play ──────────────────────────────────────────────
+
+COLOR_HEX_MAP = {
+    Color.BLUE:   "#0066CC",
+    Color.YELLOW: "#FFCC00",
+    Color.RED:    "#CC3333",
+    Color.BLACK:  "#444444",
+    Color.WHITE:  "#DDDDDD",
+}
+
+
+def get_legal_move_descriptions(game, player_idx):
+    """Return a list of dicts describing every legal move for *player_idx*.
+
+    Each entry contains the raw move parameters plus a human-readable
+    description, the *taken* count, and a colour hex value.  Used by the
+    web-game frontend to render clickable move buttons.
+    """
+    moves = get_legal_moves(game, player_idx)
+    result = []
+    for m in moves:
+        color_name = COLOR_NAMES.get(m.color, str(m.color))
+        if m.source_type == "factory":
+            src = f"F{m.source_idx + 1}"
+        else:
+            src = "centre"
+        if m.line_idx >= 0:
+            dest = f"line {m.line_idx + 1}"
+        else:
+            dest = "floor"
+        if m.source_type == "factory":
+            taken = sum(1 for t in game.factories[m.source_idx]
+                        if isinstance(t, Color) and t == m.color)
+        else:
+            taken = sum(1 for t in game.center
+                        if isinstance(t, Color) and t == m.color)
+        result.append({
+            "source_type": m.source_type,
+            "source_idx":  m.source_idx,
+            "color":       m.color.value,
+            "color_name":  color_name.title(),
+            "color_hex":   COLOR_HEX_MAP.get(m.color, "#888"),
+            "line_idx":    m.line_idx,
+            "taken":       taken,
+            "description": f"Take {taken}x {color_name.title()} from {src} to {dest}",
+        })
+    return result

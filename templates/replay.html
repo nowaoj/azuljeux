@@ -10,7 +10,7 @@
 .eval-table tr.chosen { background:#d4edda; font-weight:600; }
 .eval-table tr.chosen td { border-bottom-color:#b7dfb9; }
 .eval-table tr.finishes td { color:#c44; }
-.chosen-badge { display:inline-block; background:#2d5a3d; color:#fff; font-size:0.65rem; padding:0.05rem 0.35rem; border-radius:3px; font-weight:700; }
+
 .reason-box { background:#fff8e1; border:1px solid #f0dca0; border-radius:8px; padding:0.6rem 0.8rem; font-size:0.85rem; color:#8B6914; }
 .reason-box strong { color:#6d5200; }
 
@@ -125,6 +125,16 @@ function renderBoard(snap) {
     const pipeIdx = desc.indexOf(" | ");
     document.getElementById("action-display").textContent = pipeIdx >= 0 ? desc.slice(0, pipeIdx) : desc;
 
+    // Score deltas vs previous snapshot
+    let scoreDelta0 = 0, scoreDelta1 = 0;
+    if (current > 0) {
+        const prevState = JSON.parse(snapshots[current - 1].state_json);
+        scoreDelta0 = ((state.players && state.players[0]) ? state.players[0].score : 0)
+                    - ((prevState.players && prevState.players[0]) ? prevState.players[0].score : 0);
+        scoreDelta1 = ((state.players && state.players[1]) ? state.players[1].score : 0)
+                    - ((prevState.players && prevState.players[1]) ? prevState.players[1].score : 0);
+    }
+
     const factories = state.factories || [];
     const center = state.center || [];
     const bag = state.bag || [];
@@ -205,8 +215,13 @@ function renderBoard(snap) {
         const score = p.score || 0;
         const isCurrent = pi === cp;
         const botName = BOT_NAMES[pi] || "Player " + pi;
+        const delta = pi === 0 ? scoreDelta0 : scoreDelta1;
+        let scoreLabel = 'Score: ' + score;
+        if (delta !== 0) {
+            scoreLabel += ' <span style="' + (delta > 0 ? 'color:#2d5a3d' : 'color:#c44') + '">(' + (delta > 0 ? '+' : '') + delta + ')</span>';
+        }
         html += '<div class="player-board' + (isCurrent ? ' current-turn' : '') + '">'
-            + '<h3>' + botName + (isCurrent ? ' (current turn)' : '') + ' &mdash; Score: ' + score + '</h3>'
+            + '<h3>' + botName + (isCurrent ? ' (current turn)' : '') + ' &mdash; ' + scoreLabel + '</h3>'
             + '<div class="board-grid">'
             + '<div class="pattern-lines"><div class="board-section-label">Pattern Lines</div>';
 
@@ -224,15 +239,52 @@ function renderBoard(snap) {
         });
 
         html += '</div><div class="wall"><div class="board-section-label">Wall</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(5,28px) 20px;gap:2px;">';
         for (let r = 0; r < 5; r++) {
-            html += '<div class="wall-row">';
+            let rowComplete = true;
             for (let c = 0; c < 5; c++) {
                 const targetColor = WALL[r][c];
                 const placed = wall[r][c] !== null;
+                if (!placed) rowComplete = false;
                 html += wallTileHTML(targetColor, placed);
             }
-            html += '</div>';
+            const rcColor = rowComplete ? '#2d5a3d' : '#ddd';
+            html += '<div style="display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;color:' + rcColor + ';">' + (rowComplete ? '✓' : '·') + '</div>';
         }
+        for (let c = 0; c < 5; c++) {
+            let colComplete = true;
+            for (let r = 0; r < 5; r++) {
+                if (wall[r][c] === null) { colComplete = false; break; }
+            }
+            const ccColor = colComplete ? '#2d5a3d' : '#ddd';
+            html += '<div style="text-align:center;font-size:10px;font-weight:bold;padding-top:2px;color:' + ccColor + ';">' + (colComplete ? '✓' : '·') + '</div>';
+        }
+        html += '<div></div>';
+        html += '</div>';  // end wall grid
+
+        // Color set indicators
+        const colorSlugs = ['blue', 'yellow', 'red', 'black', 'white'];
+        const colorHexes = ['#0066CC', '#FFCC00', '#CC3333', '#444444', '#DDDDDD'];
+        let colorsComplete = 0;
+        let colorHtml = '';
+        for (let ci = 0; ci < 5; ci++) {
+            let complete = true;
+            for (let r = 0; r < 5; r++) {
+                let found = false;
+                for (let c = 0; c < 5; c++) {
+                    if (wall[r][c] === ci) { found = true; break; }
+                }
+                if (!found) { complete = false; break; }
+            }
+            if (complete) colorsComplete++;
+            colorHtml += '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + colorHexes[ci] + ';' + (complete ? '' : 'opacity:0.25') + ';"></span>';
+        }
+        if (colorsComplete > 0) {
+            html += '<div style="margin-top:3px;font-size:10px;color:#555;display:flex;gap:3px;align-items:center;flex-wrap:wrap;"><span style="font-weight:600;">Colors:</span>'
+                + colorHtml
+                + '<span>(' + colorsComplete + '/5)</span></div>';
+        }
+
         html += '</div></div>';
 
         html += '<div class="floor-line"><span class="board-section-label">Floor:</span>';
@@ -256,17 +308,52 @@ function renderBoard(snap) {
 
     // ── Reasoning — always visible ──────────────────────────────────
     const evals = stepData.evaluations || [];
+    const stepInfo = stepData.step_data;
     html += '<div class="reason-area">';
-    if (pipeIdx >= 0) {
+
+    if (stepInfo) {
+        // Wall tiling step
+        const st = stepInfo;
+        if (st.type === 'place') {
+            const pColor = st.color ? ';color:' + (COLORS[{'blue':0,'yellow':1,'red':2,'black':3,'white':4}[st.color]] || '#888') : '';
+            html += '<div class="reason-box" style="border-left:4px solid #2d5a3d"><strong>Wall tiling:</strong> '
+                + BOT_NAMES[st.player] + ' places <strong>' + st.color + '</strong> on line ' + (st.line + 1)
+                + ' &rarr; <strong style="color:#2d5a3d">+' + st.points + '</strong></div>';
+        } else if (st.type === 'floor') {
+            html += '<div class="reason-box" style="border-left:4px solid #c44"><strong>Floor penalty:</strong> '
+                + BOT_NAMES[st.player] + ' discards floor'
+                + ' &rarr; <strong style="color:#c44">' + st.score_change + '</strong>'
+                + ' (raw: ' + st.penalty + ')</div>';
+        } else if (st.type === 'end_bonuses') {
+            const bn = st.bonuses || [{}, {}];
+            html += '<div class="reason-box" style="border-left:4px solid #d4a84b;background:#fff8e1"><strong>Game Over!</strong></div>';
+            html += '<table class="eval-table" style="margin-top:0.3rem;"><thead><tr>'
+                + '<th>Player</th><th>Rows (+2)</th><th>Cols (+7)</th><th>Colors (+10)</th><th>Bonus</th>'
+                + '</tr></thead><tbody>';
+            [0,1].forEach(function(pi) {
+                const b = bn[pi] || {};
+                const total = (b.rows || 0) * 2 + (b.cols || 0) * 7 + (b.colors || 0) * 10;
+                html += '<tr><td><strong>' + BOT_NAMES[pi] + '</strong></td>'
+                    + '<td>' + (b.rows || 0) + '</td><td>' + (b.cols || 0) + '</td><td>' + (b.colors || 0) + '</td>'
+                    + '<td><strong>' + total + '</strong></td></tr>';
+            });
+            html += '</tbody></table>';
+        } else if (st.type === 'round_end') {
+            html += '<div class="reason-box" style="border-left:4px solid #2d5a3d"><strong>Round ' + (st.round - 1) + ' complete.</strong> Next round starting.</div>';
+        } else {
+            html += '<div class="reason-box"><strong>Wall tiling:</strong> ' + desc + '</div>';
+        }
+    } else if (pipeIdx >= 0) {
         html += '<div class="reason-box"><strong>Bot decision:</strong> ' + desc.slice(pipeIdx + 3) + '</div>';
     } else if (evals.length > 0) {
         html += '<div class="reason-box"><strong>Bot decision:</strong> ' + '</div>';
     }
+
     html += '</div>';
 
-    // ── All possible moves table ────────────────────────────────────
+    // ── All possible moves table (only for drafting turns) ──────────
     html += '<div class="eval-area">';
-    if (evals.length > 0) {
+    if (!stepInfo && evals.length > 0) {
         html += '<table class="eval-table"><thead><tr>'
             + '<th>Move</th><th>S</th><th>P</th><th>R</th><th>C</th><th>K</th><th>V</th><th>Completes</th><th>Finishes</th><th></th>'
             + '</tr></thead><tbody>';

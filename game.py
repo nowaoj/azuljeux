@@ -266,6 +266,21 @@ class PlayerBoard:
                 count += 1
         return count
 
+    def is_row_complete(self, r: int) -> bool:
+        """Return True if row *r* is fully filled."""
+        return all(self.wall[r][c] is not None for c in range(5))
+
+    def is_col_complete(self, c: int) -> bool:
+        """Return True if column *c* is fully filled."""
+        return all(self.wall[r][c] is not None for r in range(5))
+
+    def is_color_complete(self, color: Color) -> bool:
+        """Return True if *color* appears in all 5 rows."""
+        return all(
+            any(self.wall[r][c] == color for c in range(5))
+            for r in range(5)
+        )
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Game state
@@ -296,7 +311,7 @@ class GameState:
       - If *seed* is None, the module-level `random` is used (not seeded).
     """
 
-    def __init__(self, seed: int | None = None):
+    def __init__(self, seed: int | None = None, hundred_point_rule: bool = False):
         # Random generator for deterministic replay
         self._rng = random.Random(seed) if seed is not None else random
 
@@ -313,6 +328,10 @@ class GameState:
         self.last_round       = False
         self.game_over        = False
         self.winner           = -1    # -1 = draw, 0 = player 0, 1 = player 1
+
+        # 100-point rule (optional)
+        self.hundred_point_rule = hundred_point_rule
+        self._stalemate_rounds = 0    # consecutive rounds with no wall progress
 
         # Track whether each player has already taken from centre this round
         # (to know who gets the START token on their first centre take).
@@ -528,21 +547,121 @@ class GameState:
 
         For each player:
           1. Each full pattern line places its tile on the wall (scoring).
-          2. The floor line is cleared and penalties applied.
+          2. The floor line is cleared and penalties applied (unless the
+             game ends immediately — stalemate/race-win).
 
-        Then check for end-game.  If the game continues, set up the next
-        round.
+        End-game conditions:
+          - Standard mode: a player completes a wall row.
+          - Race-to-100 mode: a player reaches 100+ points, or stalemate
+            (2 consecutive rounds with no wall progress).
+
+        Step-by-step details are stored in self._last_wall_steps for
+        callers that want per-step display.
         """
+        self._last_wall_steps = []
+        player_names = ['P0', 'P1']
+        any_wall_progress = False
+
+        # ── Phase 1: wall placements ──────────────────────────────────
         for p in range(2):
             player = self.players[p]
             for line_idx in range(5):
                 if len(player.pattern_lines[line_idx]) == line_idx + 1:
+                    color = player.pattern_lines[line_idx][0]
+                    before = player.score
                     player.place_on_wall(line_idx, self.lid)
+                    gained = player.score - before
+                    if gained > 0:
+                        any_wall_progress = True
+                    self._last_wall_steps.append({
+                        'type': 'place',
+                        'player': p,
+                        'line': line_idx,
+                        'color': COLOR_NAMES[color],
+                        'points': gained,
+                        'state': self.get_state_snapshot(),
+                        'desc': '%s places %s on line %d: +%d' % (
+                            player_names[p], COLOR_NAMES[color], line_idx + 1, gained),
+                    })
+
+        # ── Phase 2: early end checks (skip floor penalties if ending) ──
+        if self.hundred_point_rule:
+            reached = [i for i in range(2) if self.players[i].score >= 100]
+            if reached:
+                self.last_round = True
+                self.game_over = True
+                self.winner = reached[0]
+                self._calculate_final_scores()
+                bn = getattr(self, '_end_bonuses', [{}, {}])
+                self._last_wall_steps.append({
+                    'type': 'end_bonuses',
+                    'bonuses': bn,
+                    'state': self.get_state_snapshot(),
+                    'desc': 'Race won! End bonuses: P0 rows=%d cols=%d colors=%d | P1 rows=%d cols=%d colors=%d' % (
+                        bn[0].get('rows', 0), bn[0].get('cols', 0), bn[0].get('colors', 0),
+                        bn[1].get('rows', 0), bn[1].get('cols', 0), bn[1].get('colors', 0)),
+                })
+                return
+            if not any_wall_progress:
+                self._stalemate_rounds += 1
+                if self._stalemate_rounds >= 2:
+                    self.last_round = True
+                    self.game_over = True
+                    self.winner = -1
+                    self._last_wall_steps.append({
+                        'type': 'stalemate',
+                        'state': self.get_state_snapshot(),
+                        'desc': 'Stalemate: no wall progress for 2 rounds (floor penalties skipped)',
+                    })
+                    return
+            else:
+                self._stalemate_rounds = 0
+
+        # ── Phase 3: floor penalties ──────────────────────────────────
+        for p in range(2):
+            player = self.players[p]
+            before = player.score
             penalty = player.discard_floor(self.lid)
             player.score = max(0, player.score + penalty)
-        self._check_end_game()
-        if not self.game_over:
-            self._prepare_next_round()
+            pnl = player.score - before
+            self._last_wall_steps.append({
+                'type': 'floor',
+                'player': p,
+                'penalty': penalty,
+                'score_change': pnl,
+                'state': self.get_state_snapshot(),
+                'desc': '%s floor penalty: %d (%d)' % (
+                    player_names[p], pnl, penalty),
+            })
+
+        # ── Phase 4: standard end-game check ──────────────────────────
+        if not self.hundred_point_rule:
+            for p in range(2):
+                if self.players[p].has_complete_row():
+                    self.last_round = True
+                    self.game_over = True
+                    break
+            if self.game_over:
+                self._calculate_final_scores()
+                bn = getattr(self, '_end_bonuses', [{}, {}])
+                self._last_wall_steps.append({
+                    'type': 'end_bonuses',
+                    'bonuses': bn,
+                    'state': self.get_state_snapshot(),
+                    'desc': 'Game over! End bonuses: P0 rows=%d cols=%d colors=%d | P1 rows=%d cols=%d colors=%d' % (
+                        bn[0].get('rows', 0), bn[0].get('cols', 0), bn[0].get('colors', 0),
+                        bn[1].get('rows', 0), bn[1].get('cols', 0), bn[1].get('colors', 0)),
+                })
+                return
+
+        self._prepare_next_round()
+        if self._last_wall_steps:
+            self._last_wall_steps.append({
+                'type': 'round_end',
+                'round': self.round,
+                'state': self.get_state_snapshot(),
+                'desc': 'Round %d ready' % self.round,
+            })
 
 
     def _check_end_game(self):
@@ -653,12 +772,14 @@ class GameState:
                 }
                 for i in range(2)
             ],
-            "current_player":  self.current_player,
-            "starting_player": self.starting_player,
-            "phase":           self.phase,
-            "round":           self.round,
-            "game_over":       self.game_over,
-            "winner":          self.winner,
+            "current_player":   self.current_player,
+            "starting_player":  self.starting_player,
+            "phase":            self.phase,
+            "round":            self.round,
+            "game_over":        self.game_over,
+            "winner":           self.winner,
+            "hundred_point_rule": self.hundred_point_rule,
+            "_stalemate_rounds":  self._stalemate_rounds,
         }
 
 
@@ -687,9 +808,14 @@ class GameState:
                 else:
                     self.players[i].floor_line.append(Color(c))
             self.players[i].score = p["score"]
-        self.current_player  = snapshot["current_player"]
-        self.starting_player = snapshot["starting_player"]
-        self.phase           = snapshot["phase"]
-        self.round           = snapshot["round"]
-        self.game_over       = snapshot["game_over"]
-        self.winner          = snapshot["winner"]
+        self.current_player   = snapshot["current_player"]
+        self.starting_player  = snapshot["starting_player"]
+        self.phase            = snapshot["phase"]
+        self.round            = snapshot["round"]
+        self.game_over        = snapshot["game_over"]
+        self.winner           = snapshot["winner"]
+        self.hundred_point_rule = snapshot.get("hundred_point_rule", False)
+        self._stalemate_rounds  = snapshot.get("_stalemate_rounds", 0)
+
+
+
