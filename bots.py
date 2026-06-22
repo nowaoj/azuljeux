@@ -130,9 +130,9 @@ def evaluate_move(game: GameState, player_idx: int,
       move         — the Move itself
       S            — immediate wall points if pattern line fills (0 otherwise)
       P            — floor penalty this round (negative or 0)
-      R            — tiles in the target row  after placement (0-5)
-      C            — tiles in the target column after placement (0-5)
-      K            — tiles of target colour on wall after placement (0-5)
+      R            — fraction of target row filled after placement (0.0-1.0)
+      C            — fraction of target column filled after placement (0.0-1.0)
+      K            — fraction of colour set filled on wall after placement (0.0-1.0)
       completes    — True if the pattern line fills (tile goes to wall)
       finishes_game — True if this move would complete a wall row (end game)
       taken        — how many tiles of this colour are available
@@ -198,8 +198,8 @@ def evaluate_move(game: GameState, player_idx: int,
                         if player.wall[r][wall_col] is not None)
         C = round((col_tiles + (1 if completes else 0)) / 5 * 100)
     else:
-        R = 0
-        C = 0
+        R = 0.0
+        C = 0.0
 
     raw_K = sum(1 for r in range(5) for c in range(5)
                 if player.wall[r][c] == move.color)
